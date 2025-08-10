@@ -54,10 +54,12 @@ int main() {
     while (shell.running) {
         display_prompt(&shell); // Display the shell prompt
 
-        if (!read_input(&shell)) { 
+        if (!read_input(&shell)) {  
             perror("fgets failed");
             break; // Ctrl+D or error
         }
+
+       add_to_history(&shell, shell.input); // adds input to history, for reuse
 
         char **args = tokenize_input(shell.input);
         if (args[0] == NULL) continue; // empty input
