@@ -18,7 +18,7 @@
 // --- Prompt Display ---
 void display_prompt(ShellContext *ctx) { //// Display the shell prompt
     getcwd(ctx->cwd, sizeof(ctx->cwd)); // Get current working directory
-    printf("TUSH %s> ", ctx->cwd); // Display prompt with current directory
+    printf("TUSH %s: ", ctx->cwd); // Display prompt with current directory
     //printf("TUSH> "); // Prompt for user input
     fflush(stdout); // Ensure the prompt is printed immediately
 }
