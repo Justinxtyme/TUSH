@@ -3,8 +3,8 @@
  and other posix commands */
 
 
-#include "shell.h"
-#include "executor.h"
+#include "shell.h" // Include the shell context and function declarations
+#include "executor.h" // Include the command execution function
 #include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
