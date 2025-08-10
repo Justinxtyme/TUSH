@@ -17,7 +17,7 @@ void cleanup_readline(void) {
 int read_input(ShellContext *ctx) {
     getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
     char prompt[512];
-    snprintf(prompt, sizeof(prompt), "TUSH %s: ", ctx->cwd);
+    snprintf(prompt, sizeof(prompt), "TUSH %.502s: ", ctx->cwd); // %.502s limits to 502 chars to avoid overflow
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
