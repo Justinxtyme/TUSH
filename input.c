@@ -15,7 +15,7 @@ void cleanup_readline(void) {
 }
 
 int read_input(ShellContext *ctx) {
-    getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
+    getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
     char prompt[512];
     snprintf(prompt, sizeof(prompt), "TUSH %s: ", ctx->cwd);
 
