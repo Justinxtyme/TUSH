@@ -57,7 +57,8 @@
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
-    "stdlib.h": "c"
+    "stdlib.h": "c",
+    "input.h": "c"
   },
   "makefile.configureOnOpen": true,
   "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"

@@ -5,6 +5,8 @@
 
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
+#include <readline/readline.h>
+#include <readline/history.h>
 #include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
@@ -50,12 +52,13 @@ char **tokenize_input(char *input) {
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
     init_shell(&shell); // Initialize the shell context
+    initialize_readline();
     
     while (shell.running) {
-        display_prompt(&shell); // Display the shell prompt
+        //display_prompt(&shell); // Display the shell prompt
 
         if (!read_input(&shell)) {  
-            perror("fgets failed");
+            perror("readline failed");
             break; // Ctrl+D or error
         }
 
@@ -70,7 +73,7 @@ int main() {
             run_command(args); // ⬅️ Dispatch to executor
         }
     }
-
+    cleanup_readline();
     return 0;
 }
 

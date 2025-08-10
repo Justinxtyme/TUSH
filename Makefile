@@ -10,7 +10,10 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -MMD -MP
 
 # List of source files
-SRC = main.c executor.c builtins.c shell.c
+SRC = main.c executor.c builtins.c shell.c input.c
+#include readline library for input handling
+# This library provides functions for reading input with line editing capabilities
+LDFLAGS = -lreadline
 
 # List of object files (same names but .o instead of .c)
 OBJ = $(SRC:.c=.o)
