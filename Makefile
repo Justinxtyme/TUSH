@@ -10,7 +10,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -MMD -MP
 
 # List of source files
-SRC = main.c executor.c builtins.c
+SRC = main.c executor.c builtins.c shell.c
 
 # List of object files (same names but .o instead of .c)
 OBJ = $(SRC:.c=.o)
