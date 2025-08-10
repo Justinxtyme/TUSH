@@ -8,7 +8,12 @@
 #include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
-#include <unistd.h> // for POSIX functions like fork, execvp, chdir
+#ifdef _WIN32
+    #include <direct.h>
+    #define getcwd _getcwd
+#else
+    #include <unistd.h> //// for POSIX functions like fork, execvp, chdir
+#endif 
 
 // --- Prompt Display ---
 void display_prompt(ShellContext *ctx) { //// Display the shell prompt
