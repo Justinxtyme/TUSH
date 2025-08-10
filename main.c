@@ -2,7 +2,7 @@
  it will support basic built-in commands like 'cd', 'exit', and 'ls'   
  and other posix commands */
 
-
+#include "input.h"
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
 #include <readline/readline.h>
@@ -25,14 +25,14 @@ void display_prompt(ShellContext *ctx) { //// Display the shell prompt
     fflush(stdout); // Ensure the prompt is printed immediately
 }
 
-// --- Input Handling ---
+/* --- Input Handling ---
 int read_input(ShellContext *ctx) { // Read input from stdin
     if (!fgets(ctx->input, sizeof(ctx->input), stdin)) { // Read a line of input
         return 0; // EOF or error
     }
     ctx->input[strcspn(ctx->input, "\n")] = 0; // Strip newline
     return 1;
-}
+} */
 
 // --- Tokenizer (temporary inline version) ---
 char **tokenize_input(char *input) {

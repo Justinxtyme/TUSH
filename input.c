@@ -4,6 +4,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "input.h"
+#include <unistd.h> // for getcwd
 
 void initialize_readline(void) {
     rl_bind_key('\t', rl_complete); // optional: enable tab completion
