@@ -59,5 +59,6 @@
   "files.associations": {
     "stdlib.h": "c"
   },
-  "makefile.configureOnOpen": true
+  "makefile.configureOnOpen": true,
+  "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"
 }

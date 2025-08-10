@@ -48,8 +48,9 @@ char **tokenize_input(char *input) {
 
 // --- Main Loop ---
 int main() {
-    ShellContext shell = { .running = 1 };
-
+    ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
+    init_shell(&shell); // Initialize the shell context
+    
     while (shell.running) {
         display_prompt(&shell); // Display the shell prompt
 
