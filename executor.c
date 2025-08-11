@@ -275,6 +275,9 @@ enum path_lookup {
     }
 
     if (pid == 0) {
+        signal(SIGINT, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
         LOG(LOG_LEVEL_INFO, "in child, execve(\"%s\")", path_to_exec);
         execve(path_to_exec, args, environ);
 
