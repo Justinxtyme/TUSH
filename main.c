@@ -10,12 +10,15 @@
 #include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
+#include "debug.h"
+
 #ifdef _WIN32
     #include <direct.h>
     #define getcwd _getcwd
 #else
     #include <unistd.h> //// for POSIX functions like fork, execvp, chdir
 #endif 
+
 
 // --- Prompt Display ---
 void display_prompt(ShellContext *ctx) { //// Display the shell prompt
@@ -53,11 +56,15 @@ int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
     init_shell(&shell); // Initialize the shell context
     initialize_readline();
-    
+   
+    // Log shell startup 
+    LOG(LOG_LEVEL_INFO, "TUSH started, pid=%d", getpid());
+   
     while (shell.running) {
         //display_prompt(&shell); // Display the shell prompt
 
         if (!read_input(&shell)) {  
+            LOG(LOG_LEVEL_ERR, "read_input failed: %s", strerror(errno));
             perror("readline failed");
             break; // Ctrl+D or error
         }

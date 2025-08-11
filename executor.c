@@ -17,7 +17,7 @@
 
 #include "executor.h"
 #include "builtins.h"
-
+#include "debug.h"
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
 
 #define bool _Bool
 
@@ -41,7 +42,15 @@ static const char *progname = "tush"; //
  * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls).
  */
 bool has_slash(const char *s) {
-    return s && strchr(s, '/') != NULL;
+    //return s && strchr(s, '/') != NULL;
+    LOG(LOG_LEVEL_INFO, "ENTER has_slash(\"%s\")", s ? s : "(null)");
+    bool found = (s && strchr(s, '/') != NULL);
+    LOG(LOG_LEVEL_INFO, "  has_slash → %s", found ? "true" : "false");
+    return found;
+
+
+
+
 }
 
 /*
