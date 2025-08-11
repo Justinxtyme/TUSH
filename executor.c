@@ -214,11 +214,6 @@ enum path_lookup {
  * 4) Fork and exec the decided path. On exec failure, print a clean message and return 126/127.
  * 5) Parent waits and returns child's exit status or signal-based status (128+signum).
  */
-
- // INTEGRATE WITH DEBUG!
-  // INTEGRATE WITH DEBUG!
-   // INTEGRATE WITH DEBUG!
-    // INTEGRATE WITH DEBUG!
  int run_command(char **args) {
     LOG(LOG_LEVEL_INFO, "ENTER run_command args=%p", (void*)args);
     if (!args || !args[0]) return 0;  // Empty input: no-op, success
@@ -320,60 +315,3 @@ enum path_lookup {
     LOG(LOG_LEVEL_WARN, "run_command reached unexpected exit path");
     return 1;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-#include "executor.h"
-#include "builtins.h"
-#include <unistd.h>
-#include <sys/wait.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-int run_command(char **args) {
-    if (args[0] == NULL) return 0;
-
-    if (strcmp(args[0], "cd") == 0) {
-        return handle_cd(args);
-    } else if (strcmp(args[0], "exit") == 0) {
-        return handle_exit(args);
-    }
-
-    pid_t pid = fork();
-    if (pid == 0) {
-        execvp(args[0], args);
-        perror("exec");
-        exit(1);
-    } else {
-        waitpid(pid, NULL, 0);
-    }
-    return 0;
-} */

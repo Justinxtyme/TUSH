@@ -22,7 +22,7 @@
 #endif 
 
 
-// --- Prompt Display ---
+/*// --- Prompt Display ---
 void display_prompt(ShellContext *ctx) { //// Display the shell prompt
     getcwd(ctx->cwd, sizeof(ctx->cwd)); // Get current working directory
     printf("TUSH %s: ", ctx->cwd); // Display prompt with current directory
@@ -30,7 +30,7 @@ void display_prompt(ShellContext *ctx) { //// Display the shell prompt
     fflush(stdout); // Ensure the prompt is printed immediately
 }
 
-/* --- Input Handling ---
+ --- Input Handling ---
 int read_input(ShellContext *ctx) { // Read input from stdin
     if (!fgets(ctx->input, sizeof(ctx->input), stdin)) { // Read a line of input
         return 0; // EOF or error
