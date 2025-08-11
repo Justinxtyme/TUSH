@@ -27,7 +27,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
+#include <signal.h>
 
 #define bool _Bool
 
