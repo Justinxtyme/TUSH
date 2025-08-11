@@ -2,13 +2,13 @@
  it will support basic built-in commands like 'cd', 'exit', and 'ls'   
  and other posix commands */
 
+#include <stdio.h> // for printf, fgets, perror
 #include "input.h"
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
 #include "debug.h"
