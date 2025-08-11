@@ -220,20 +220,25 @@ enum path_lookup {
    // INTEGRATE WITH DEBUG!
     // INTEGRATE WITH DEBUG!
  int run_command(char **args) {
+    LOG(LOG_LEVEL_INFO, "ENTER run_command args=%p", (void*)args);
     if (!args || !args[0]) return 0;  // Empty input: no-op, success
 
     // Builtins first (extend this section as you add more builtins)
     if (strcmp(args[0], "cd") == 0) {
+        LOG(LOG_LEVEL_INFO, "builtin cd");
         return handle_cd(args);
     } else if (strcmp(args[0], "exit") == 0) {
+        LOG(LOG_LEVEL_INFO, "builtin exit");
         return handle_exit(args);
     }
 
     const char *cmd = args[0];
     const char *path_to_exec = NULL;
     char *resolved = NULL;  // malloc’d path if resolved via PATH
+    LOG(LOG_LEVEL_INFO, "cmd=\"%s\"", cmd);
 
     if (has_slash(cmd)) {
+        LOG(LOG_LEVEL_INFO, "treating \"%s\" as literal path", cmd);
         // Treat argv[0] as a literal path (absolute or relative)
         if (is_directory(cmd)) {
             fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
@@ -245,6 +250,7 @@ enum path_lookup {
         }
         path_to_exec = cmd;
     } else {
+        LOG(LOG_LEVEL_INFO, "resolving \"%s\" via PATH", cmd);
         // No slash → resolve via PATH using malloc-based helper
         int r = search_path_alloc(cmd, &resolved);
         if (r == NOT_FOUND) {
@@ -252,12 +258,15 @@ enum path_lookup {
             return 127;
         } else if (r == FOUND_DIR) {
             fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
+            LOG(LOG_LEVEL_WARN, "search_path_alloc → FOUND_DIR");
             return 126;
         } else if (r == FOUND_NOEXEC) {
             fprintf(stderr, "%s: %s: Permission denied\n", progname, cmd);
+            LOG(LOG_LEVEL_WARN, "search_path_alloc → FOUND_NOEXEC");
             return 126;
         } else { // FOUND_EXEC
             path_to_exec = resolved;
+            LOG(LOG_LEVEL_INFO, "search_path_alloc → \"%s\"", resolved);
         }
     }
 
@@ -265,11 +274,13 @@ enum path_lookup {
     pid_t pid = fork();
     if (pid < 0) {
         fprintf(stderr, "%s: fork failed: %s\n", progname, strerror(errno));
+        LOG(LOG_LEVEL_ERR, "fork() failed: %s", strerror(errno));
         if (resolved) free(resolved);
         return 1;
     }
 
     if (pid == 0) {
+        LOG(LOG_LEVEL_INFO, "in child, execve(\"%s\")", path_to_exec);
         execve(path_to_exec, args, environ);
 
         int err = errno;
@@ -286,7 +297,9 @@ enum path_lookup {
 
     // Parent: wait for child and propagate status
     int wstatus = 0;
+    LOG(LOG_LEVEL_INFO, "parent waiting for pid=%d", pid);
     if (waitpid(pid, &wstatus, 0) < 0) {
+        LOG(LOG_LEVEL_ERR, "waitpid() failed: %s", strerror(errno));
         fprintf(stderr, "%s: waitpid failed: %s\n", progname, strerror(errno));
         if (resolved) free(resolved);
         return 1;
@@ -295,9 +308,11 @@ enum path_lookup {
     if (resolved) free(resolved);  // Clean up malloc’d path
 
     if (WIFEXITED(wstatus)) {
+        LOG(LOG_LEVEL_INFO, "child exited normally with %d", code);
         return WEXITSTATUS(wstatus);
     }
     if (WIFSIGNALED(wstatus)) {
+        LOG(LOG_LEVEL_WARN, "child killed by signal %d", sig);
         return 128 + WTERMSIG(wstatus);
     }
     return 1;
