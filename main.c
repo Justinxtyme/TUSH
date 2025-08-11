@@ -22,22 +22,6 @@
 #endif 
 
 
-/*// --- Prompt Display ---
-void display_prompt(ShellContext *ctx) { //// Display the shell prompt
-    getcwd(ctx->cwd, sizeof(ctx->cwd)); // Get current working directory
-    printf("TUSH %s: ", ctx->cwd); // Display prompt with current directory
-    //printf("TUSH> "); // Prompt for user input
-    fflush(stdout); // Ensure the prompt is printed immediately
-}
-
- --- Input Handling ---
-int read_input(ShellContext *ctx) { // Read input from stdin
-    if (!fgets(ctx->input, sizeof(ctx->input), stdin)) { // Read a line of input
-        return 0; // EOF or error
-    }
-    ctx->input[strcspn(ctx->input, "\n")] = 0; // Strip newline
-    return 1;
-} */
 
 // --- Tokenizer (temporary inline version) ---
 char **tokenize_input(char *input) {
