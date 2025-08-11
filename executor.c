@@ -308,11 +308,13 @@ enum path_lookup {
     if (resolved) free(resolved);  // Clean up malloc’d path
 
     if (WIFEXITED(wstatus)) {
-        LOG(LOG_LEVEL_INFO, "child exited normally with %d", code);
+        int exit_code = WEXITSTATUS(wstatus);
+        LOG(LOG_LEVEL_INFO, "child exited normally with %d", exit_code);
         return WEXITSTATUS(wstatus);
     }
     if (WIFSIGNALED(wstatus)) {
-        LOG(LOG_LEVEL_WARN, "child killed by signal %d", sig);
+        int term_sig = WTERMSIG(wstatus);
+        LOG(LOG_LEVEL_WARN, "child killed by signal %d", term_sig);
         return 128 + WTERMSIG(wstatus);
     }
     LOG(LOG_LEVEL_WARN, "run_command reached unexpected exit path");
