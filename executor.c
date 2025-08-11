@@ -294,7 +294,13 @@ enum path_lookup {
     }
 
     // Parent: wait for child and propagate status
+    // Temporarily ignore SIGINT in the shell
+    signal(SIGINT, SIG_IGN);
+    
     int wstatus = 0;
+    waitpid(pid, &wstatus, 0);
+    signal(SIGINT, handle_sigint);  // or SIG_DFL if you don’t have a custom handler
+    
     LOG(LOG_LEVEL_INFO, "parent waiting for pid=%d", pid);
     if (waitpid(pid, &wstatus, 0) < 0) {
         LOG(LOG_LEVEL_ERR, "waitpid() failed: %s", strerror(errno));
