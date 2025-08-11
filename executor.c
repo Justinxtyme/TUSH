@@ -1,3 +1,299 @@
+// executor.c
+// TUSH external command execution with clear, shell-like errors and correct exit codes.
+//
+// Behavior summary:
+// - Builtins (cd, exit) handled here and returned directly.
+// - Non-builtins:
+//   - If argv[0] contains a slash, treat it as a path and diagnose it.
+//   - If no slash, search PATH yourself to differentiate:
+//       * not found       → "command not found" (exit 127), no fork
+//       * found directory → "Is a directory" (exit 126), no fork
+//       * found non-exec  → "Permission denied" (exit 126), no fork
+//       * found exec file → fork + exec
+// - On exec failure, print a clean one-line error and exit with:
+//       * 126 when found but not runnable (EACCES, ENOEXEC, directory)
+//       * 127 when not found (ENOENT, ENOTDIR path prefix issues)
+// This avoids the generic "exec: No such file or directory" for every case.
+
+#include "executor.h"
+#include "builtins.h"
+
+#include <errno.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#define bool _Bool
+
+extern char **environ;  // Environment passed to execve
+
+// Program prefix for error messages. Consider wiring this to your prompt name.
+static const char *progname = "tush"; //
+
+/*
+ * has_slash
+ * Returns true if the string contains a '/' character.
+ * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls).
+ */
+static bool has_slash(const char *s) {
+    return s && strchr(s, '/') != NULL;
+}
+
+/*
+ * is_directory
+ * stat(2) the path and report whether it's a directory.
+ * Returns false on stat errors or when not a directory.
+ */
+static bool is_directory(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+/*
+ * is_regular
+ * stat(2) the path and report whether it's a regular file.
+ * Returns false on stat errors or when not a regular file.
+ */
+static bool is_regular(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+/*
+ * is_executable
+ * Uses access(2) with X_OK to check executability for the current user.
+ * Note: doesn't confirm file type; combine with is_regular when needed.
+ */
+static bool is_executable(const char *path) {
+    return access(path, X_OK) == 0;
+}
+
+/*
+ * PATH lookup result codes to disambiguate outcomes without forking.
+ */
+enum path_lookup {
+    FOUND_EXEC   = 0,   // Found an executable regular file
+    NOT_FOUND    = -1,  // No candidate found anywhere on PATH
+    FOUND_NOEXEC = -2,  // Found regular file but not executable
+    FOUND_DIR    = -3   // Found a directory named like the command
+};
+
+/*
+ * search_path
+ * Resolve a command name (no slash) against PATH, trying each segment.
+ *
+ * On success (FOUND_EXEC):
+ *   - Writes the absolute/relative candidate path into 'out' and returns FOUND_EXEC.
+ * On other outcomes:
+ *   - Returns NOT_FOUND / FOUND_NOEXEC / FOUND_DIR to allow tailored messages.
+ *
+ * Notes:
+ * - Empty PATH segment means current directory; we render "./cmd" in that case.
+ * - We prefer the first executable regular file we encounter.
+ * - If we encounter only non-exec files or directories named like the cmd,
+ *   we remember that to return a more precise error (126 vs 127).
+ */
+static int search_path_alloc(const char *cmd, char **outp) {
+    const char *path = getenv("PATH");
+    if (!path || !*path) return NOT_FOUND;
+
+    int found_noexec = 0, found_dir = 0;
+
+    for (const char *p = path; ; ) {
+        const char *colon = strchr(p, ':');
+        size_t seg_len = colon ? (size_t)(colon - p) : strlen(p);
+
+        size_t need = (seg_len ? seg_len + 1 : 2) + strlen(cmd) + 1;
+        char *candidate = malloc(need);
+        if (!candidate) return NOT_FOUND;
+
+        if (seg_len == 0)
+            snprintf(candidate, need, "./%s", cmd);
+        else
+            snprintf(candidate, need, "%.*s/%s", (int)seg_len, p, cmd);
+
+        if (is_directory(candidate)) {
+            found_dir = 1;
+            free(candidate);
+        } else if (is_regular(candidate)) {
+            if (is_executable(candidate)) {
+                *outp = candidate;  // caller takes ownership
+                return FOUND_EXEC;
+            } else {
+                found_noexec = 1;
+                free(candidate);
+            }
+        } else {
+            free(candidate);
+        }
+
+        if (!colon) break;
+        p = colon + 1;
+    }
+
+    if (found_noexec) return FOUND_NOEXEC;
+    if (found_dir)    return FOUND_DIR;
+    return NOT_FOUND;
+}
+/*
+ * print_exec_error
+ * Map common errno values from a failed execve to user-friendly, shell-like errors.
+ * This keeps output consistent and avoids raw perror prefixes.
+ */
+static void print_exec_error(const char *what, int err) {
+    switch (err) {
+        case EACCES:
+            fprintf(stderr, "%s: %s: Permission denied\n", progname, what);
+            break;
+        case ENOEXEC:
+            // e.g., binary/text without valid exec header; often 126
+            fprintf(stderr, "%s: %s: Exec format error\n", progname, what);
+            break;
+        case ENOENT:
+            // Missing file, or missing shebang interpreter
+            fprintf(stderr, "%s: %s: No such file or directory\n", progname, what);
+            break;
+        case ENOTDIR:
+            // A path component wasn't a directory
+            fprintf(stderr, "%s: %s: Not a directory\n", progname, what);
+            break;
+        default:
+            // Fallback for rarer cases (E2BIG, ETXTBSY, etc.)
+            fprintf(stderr, "%s: %s: %s\n", progname, what, strerror(err));
+            break;
+    }
+}
+
+/*
+ * run_command
+ * Entry point from the shell for executing a parsed argv (args).
+ * Returns an exit status to store in $? and to influence the prompt, etc.
+ *
+ * Flow:
+ * 1) Handle builtins (cd, exit) immediately.
+ * 2) If args[0] has no slash: resolve via PATH and short-circuit non-exec cases (no fork).
+ * 3) If args[0] has a slash: treat as a path; pre-diagnose directory and permissions.
+ * 4) Fork and exec the decided path. On exec failure, print a clean message and return 126/127.
+ * 5) Parent waits and returns child's exit status or signal-based status (128+signum).
+ */
+int run_command(char **args) {
+    if (!args || !args[0]) return 0;  // Empty input: no-op, success
+
+    // Builtins first (extend this section as you add more builtins)
+    if (strcmp(args[0], "cd") == 0) {
+        return handle_cd(args);
+    } else if (strcmp(args[0], "exit") == 0) {
+        return handle_exit(args);
+    }
+
+    const char *cmd = args[0];
+    const char *path_to_exec = NULL;
+    char *resolved = NULL;  // malloc’d path if resolved via PATH
+
+    if (has_slash(cmd)) {
+        // Treat argv[0] as a literal path (absolute or relative)
+        if (is_directory(cmd)) {
+            fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
+            return 126;
+        }
+        if (is_regular(cmd) && !is_executable(cmd)) {
+            fprintf(stderr, "%s: %s: Permission denied\n", progname, cmd);
+            return 126;
+        }
+        path_to_exec = cmd;
+    } else {
+        // No slash → resolve via PATH using malloc-based helper
+        int r = search_path_alloc(cmd, &resolved);
+        if (r == NOT_FOUND) {
+            fprintf(stderr, "%s: command not found: %s\n", progname, cmd);
+            return 127;
+        } else if (r == FOUND_DIR) {
+            fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
+            return 126;
+        } else if (r == FOUND_NOEXEC) {
+            fprintf(stderr, "%s: %s: Permission denied\n", progname, cmd);
+            return 126;
+        } else { // FOUND_EXEC
+            path_to_exec = resolved;
+        }
+    }
+
+    // At this point we have a candidate path to exec. Fork and run it.
+    pid_t pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "%s: fork failed: %s\n", progname, strerror(errno));
+        if (resolved) free(resolved);
+        return 1;
+    }
+
+    if (pid == 0) {
+        execve(path_to_exec, args, environ);
+
+        int err = errno;
+
+        if (is_directory(path_to_exec)) {
+            fprintf(stderr, "%s: %s: Is a directory\n", progname, path_to_exec);
+            _exit(126);
+        }
+
+        print_exec_error(path_to_exec, err);
+        int status = (err == EACCES || err == ENOEXEC) ? 126 : 127;
+        _exit(status);
+    }
+
+    // Parent: wait for child and propagate status
+    int wstatus = 0;
+    if (waitpid(pid, &wstatus, 0) < 0) {
+        fprintf(stderr, "%s: waitpid failed: %s\n", progname, strerror(errno));
+        if (resolved) free(resolved);
+        return 1;
+    }
+
+    if (resolved) free(resolved);  // Clean up malloc’d path
+
+    if (WIFEXITED(wstatus)) {
+        return WEXITSTATUS(wstatus);
+    }
+    if (WIFSIGNALED(wstatus)) {
+        return 128 + WTERMSIG(wstatus);
+    }
+    return 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
 #include "executor.h"
 #include "builtins.h"
 #include <unistd.h>
@@ -24,4 +320,4 @@ int run_command(char **args) {
         waitpid(pid, NULL, 0);
     }
     return 0;
-}
+} */

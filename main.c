@@ -78,37 +78,3 @@ int main() {
 }
 
 
-
-
-
- /*void display_prompt() {
-    printf("mytush> "); // Display the shell prompt
-    fflush(stdout); // Ensure prompt is printed immediately
-}
-
-int main() {
-    char input[1024]; // Buffer to hold user input
-
-    while (1) {
-        display_prompt(); // Show prompt
-
-        if (!fgets(input, sizeof(input), stdin)) { // Read input from stdin
-            perror("fgets failed");
-            break; // Exit on EOF (Ctrl+D)
-        }
-
-        // Strip newline
-        input[strcspn(input, "\n")] = 0; // Remove trailing newline character
-
-        // Temporary: echo back the input
-        printf("You entered: %s\n", input); // Echo the input for debugging
-
-        // Exit command
-        if (strcmp(input, "exit") == 0) { // Check for exit command
-            break;
-        }
-    }
-
-    return 0;
-}  */
-
