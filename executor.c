@@ -76,7 +76,11 @@ bool is_directory(const char *path) {
  */
 bool is_regular(const char *path) {
     struct stat st;
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+    LOG(LOG_LEVEL_INFO, "ENTER is_regular(\"%s\")", path ? path : "(null)");
+    bool rg = (stat(path, &st) == 0 && S_ISREG(st.st_mode));
+    LOG(LOG_LEVEL_INFO, "  is_regular → %s", rg ? "true" : "false");
+
+    return rg;
 }
 
 /*
