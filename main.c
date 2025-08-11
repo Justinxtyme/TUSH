@@ -5,12 +5,14 @@
 #include "input.h"
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
+#include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
 #include "debug.h"
+
 
 #ifdef _WIN32
     #include <direct.h>
