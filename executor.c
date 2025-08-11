@@ -40,7 +40,7 @@ static const char *progname = "tush"; //
  * Returns true if the string contains a '/' character.
  * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls).
  */
-static bool has_slash(const char *s) {
+bool has_slash(const char *s) {
     return s && strchr(s, '/') != NULL;
 }
 
@@ -49,7 +49,7 @@ static bool has_slash(const char *s) {
  * stat(2) the path and report whether it's a directory.
  * Returns false on stat errors or when not a directory.
  */
-static bool is_directory(const char *path) {
+bool is_directory(const char *path) {
     struct stat st;
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
@@ -59,7 +59,7 @@ static bool is_directory(const char *path) {
  * stat(2) the path and report whether it's a regular file.
  * Returns false on stat errors or when not a regular file.
  */
-static bool is_regular(const char *path) {
+bool is_regular(const char *path) {
     struct stat st;
     return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
@@ -69,7 +69,7 @@ static bool is_regular(const char *path) {
  * Uses access(2) with X_OK to check executability for the current user.
  * Note: doesn't confirm file type; combine with is_regular when needed.
  */
-static bool is_executable(const char *path) {
+bool is_executable(const char *path) {
     return access(path, X_OK) == 0;
 }
 
@@ -98,7 +98,7 @@ enum path_lookup {
  * - If we encounter only non-exec files or directories named like the cmd,
  *   we remember that to return a more precise error (126 vs 127).
  */
-static int search_path_alloc(const char *cmd, char **outp) {
+int search_path_alloc(const char *cmd, char **outp) {
     const char *path = getenv("PATH");
     if (!path || !*path) return NOT_FOUND;
 
@@ -145,7 +145,7 @@ static int search_path_alloc(const char *cmd, char **outp) {
  * Map common errno values from a failed execve to user-friendly, shell-like errors.
  * This keeps output consistent and avoids raw perror prefixes.
  */
-static void print_exec_error(const char *what, int err) {
+void print_exec_error(const char *what, int err) {
     switch (err) {
         case EACCES:
             fprintf(stderr, "%s: %s: Permission denied\n", progname, what);
