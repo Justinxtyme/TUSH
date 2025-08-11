@@ -60,7 +60,13 @@ bool has_slash(const char *s) {
  */
 bool is_directory(const char *path) {
     struct stat st;
-    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+    LOG(LOG_LEVEL_INFO, "ENTER is_directory(\"%s\")", path ? path : "(null)");
+    bool rd = (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+    LOG(LOG_LEVEL_INFO, "  is_directory → %s", rd ? "true" : "false");
+    return rd;
+
+
+
 }
 
 /*
