@@ -89,7 +89,11 @@ bool is_regular(const char *path) {
  * Note: doesn't confirm file type; combine with is_regular when needed.
  */
 bool is_executable(const char *path) {
-    return access(path, X_OK) == 0;
+    LOG(LOG_LEVEL_INFO, "ENTER is_executable(\"%s\")", path ? path : "(null)");
+    bool ex = (access(path, X_OK) == 0);
+    LOG(LOG_LEVEL_INFO, "  is_executable → %s", ex ? "true" : "false");
+
+    return ex;
 }
 
 /*
@@ -117,7 +121,12 @@ enum path_lookup {
  * - If we encounter only non-exec files or directories named like the cmd,
  *   we remember that to return a more precise error (126 vs 127).
  */
-int search_path_alloc(const char *cmd, char **outp) {
+
+ // INTEGRATE WITH DEBUG!
+  // INTEGRATE WITH DEBUG!
+   // INTEGRATE WITH DEBUG!
+    // INTEGRATE WITH DEBUG!
+ int search_path_alloc(const char *cmd, char **outp) {
     const char *path = getenv("PATH");
     if (!path || !*path) return NOT_FOUND;
 
@@ -164,7 +173,12 @@ int search_path_alloc(const char *cmd, char **outp) {
  * Map common errno values from a failed execve to user-friendly, shell-like errors.
  * This keeps output consistent and avoids raw perror prefixes.
  */
-void print_exec_error(const char *what, int err) {
+
+ // INTEGRATE WITH DEBUG!
+  // INTEGRATE WITH DEBUG!
+   // INTEGRATE WITH DEBUG!
+    // INTEGRATE WITH DEBUG!
+ void print_exec_error(const char *what, int err) {
     switch (err) {
         case EACCES:
             fprintf(stderr, "%s: %s: Permission denied\n", progname, what);
@@ -200,7 +214,12 @@ void print_exec_error(const char *what, int err) {
  * 4) Fork and exec the decided path. On exec failure, print a clean message and return 126/127.
  * 5) Parent waits and returns child's exit status or signal-based status (128+signum).
  */
-int run_command(char **args) {
+
+ // INTEGRATE WITH DEBUG!
+  // INTEGRATE WITH DEBUG!
+   // INTEGRATE WITH DEBUG!
+    // INTEGRATE WITH DEBUG!
+ int run_command(char **args) {
     if (!args || !args[0]) return 0;  // Empty input: no-op, success
 
     // Builtins first (extend this section as you add more builtins)
