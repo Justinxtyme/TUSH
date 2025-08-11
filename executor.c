@@ -315,6 +315,7 @@ enum path_lookup {
         LOG(LOG_LEVEL_WARN, "child killed by signal %d", sig);
         return 128 + WTERMSIG(wstatus);
     }
+    LOG(LOG_LEVEL_WARN, "run_command reached unexpected exit path");
     return 1;
 }
 
