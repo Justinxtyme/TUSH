@@ -10,18 +10,20 @@
 
 
 
-/* Called once in main() before REPL to ignore SIGINT/SIGQUIT in the shell */
+/* In main(), call once before the REPL so the shell ignores these signals itself */
 void setup_parent_signals(void) {
     struct sigaction sa = {0};
     sa.sa_handler = SIG_IGN;
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
+    sigaction(SIGTSTP, &sa, NULL);
 }
 
-/* Called in every child before exec to restore default signal behavior */
+/* In each child, restore default signal actions */
 void setup_child_signals(void) {
     struct sigaction sa = {0};
     sa.sa_handler = SIG_DFL;
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
+    sigaction(SIGTSTP, &sa, NULL);
 }

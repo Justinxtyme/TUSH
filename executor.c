@@ -265,23 +265,21 @@ static void exec_child(char **args) {
 
 
 
-/* this function launches a pipeline of N commands.
-it sets up the necessary pipes and forks child processes to execute each command in the pipeline.
-With proper error handling and cleanup. */
 int launch_pipeline(char ***cmds, int num_cmds) {
     int i;
     int pipes[num_cmds - 1][2];
     pid_t pids[num_cmds];
     pid_t pgid = 0;
+    int status, last_exit = 0;
 
-    /* Handle a single command (including built-ins) */
+    /*----- Single command path -----*/
     if (num_cmds == 1) {
         char **args = cmds[0];
         if (!args || !args[0]) return 0;
-
         if (strcmp(args[0], "cd") == 0)
             return handle_cd(args);
 
+        /* Fork the one child */
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
@@ -289,31 +287,41 @@ int launch_pipeline(char ***cmds, int num_cmds) {
         }
 
         if (pid == 0) {
-            /* CHILD: new pgid, take terminal, restore signals, exec */
+            /* CHILD: new PGID, take terminal, restore signals, exec */
             setpgid(0, 0);
             tcsetpgrp(STDIN_FILENO, getpid());
             setup_child_signals();
             exec_child(args);
         }
 
-        /* PARENT: record pgid, give terminal to child group */
+        /* PARENT: record PGID, hand tty to child group */
         pgid = pid;
         setpgid(pgid, pgid);
         tcsetpgrp(STDIN_FILENO, pgid);
 
-        /* Wait for the single child */
-        int w;
-        waitpid(pid, &w, 0);
+        /* Wait for child to exit or stop */
+        waitpid(pid, &status, WUNTRACED);
 
-        /* Restore shell’s terminal control */
+        /* If it was stopped (Ctrl-Z), let shell retake tty and return */
+        if (WIFSTOPPED(status)) {
+            tcsetpgrp(STDIN_FILENO, getpid());
+            fprintf(stderr, "\n[Stopped]\n");
+            /* return 128+SIGTSTP so shell knows it was suspended */
+            return 128 + WSTOPSIG(status);
+        }
+
+        /* Normal termination or signaled */
+        if (WIFEXITED(status))   last_exit = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status))
+            last_exit = 128 + WTERMSIG(status);
+
+        /* Shell retakes terminal */
         tcsetpgrp(STDIN_FILENO, getpid());
-
-        if (WIFEXITED(w))   return WEXITSTATUS(w);
-        if (WIFSIGNALED(w)) return 128 + WTERMSIG(w);
-        return 1;
+        return last_exit;
     }
 
-    /* Multi-stage pipeline: set up pipes */
+    /*----- Multi-stage pipeline path -----*/
+    /* 1) Create pipes */
     for (i = 0; i < num_cmds - 1; ++i) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
@@ -321,7 +329,7 @@ int launch_pipeline(char ***cmds, int num_cmds) {
         }
     }
 
-    /* Fork each stage */
+    /* 2) Fork each stage */
     for (i = 0; i < num_cmds; ++i) {
         pids[i] = fork();
         if (pids[i] < 0) {
@@ -332,7 +340,7 @@ int launch_pipeline(char ***cmds, int num_cmds) {
         if (pids[i] == 0) {
             /* CHILD */
 
-            /* 1) Set up process group and terminal on first stage */
+            /* 2a) Process group & tty on stage 0 */
             if (i == 0) {
                 setpgid(0, 0);
                 tcsetpgrp(STDIN_FILENO, getpid());
@@ -341,25 +349,25 @@ int launch_pipeline(char ***cmds, int num_cmds) {
                 setpgid(0, pgid);
             }
 
-            /* 2) Redirect pipes */
+            /* 2b) Wire pipes */
             if (i > 0)
                 dup2(pipes[i - 1][0], STDIN_FILENO);
             if (i < num_cmds - 1)
                 dup2(pipes[i][1], STDOUT_FILENO);
 
-            /* 3) Close all pipe fds */
+            /* 2c) Close all fds */
             for (int j = 0; j < num_cmds - 1; ++j) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
-            /* 4) Restore signals and exec */
+            /* 2d) Restore signals and exec */
             setup_child_signals();
             exec_child(cmds[i]);
         } else {
             /* PARENT */
 
-            /* Establish pgid and give terminal on first fork */
+            /* Establish PGID and hand tty on the first child */
             if (i == 0) {
                 pgid = pids[0];
                 setpgid(pgid, pgid);
@@ -370,50 +378,33 @@ int launch_pipeline(char ***cmds, int num_cmds) {
         }
     }
 
-    /* Parent closes all pipe fds */
+    /* 3) Parent closes all pipe fds */
     for (i = 0; i < num_cmds - 1; ++i) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 
-    /* Wait for all children, capture last stage exit */
-    int last_exit = 0;
-    for (i = 0; i < num_cmds; ++i) {
-        int w;
-        if (waitpid(pids[i], &w, 0) < 0) {
+    /* 4) Wait on the whole process group for exit OR stop */
+    do {
+        pid_t w = waitpid(-pgid, &status, WUNTRACED);
+        if (w < 0) {
             perror("waitpid");
-            continue;
+            break;
         }
-        if (i == num_cmds - 1) {
-            if (WIFEXITED(w))   last_exit = WEXITSTATUS(w);
-            else if (WIFSIGNALED(w))
-                last_exit = 128 + WTERMSIG(w);
-        }
-    }
+    } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 
-    /* Shell retakes terminal */
+    /* 5) Handle stop vs exit */
+    if (WIFSTOPPED(status)) {
+        tcsetpgrp(STDIN_FILENO, getpid());
+        fprintf(stderr, "\n[Pipeline stopped]\n");
+        return 128 + WSTOPSIG(status);
+    }
+    if (WIFEXITED(status))   last_exit = WEXITSTATUS(status);
+    else if (WIFSIGNALED(status))
+        last_exit = 128 + WTERMSIG(status);
+
+    /* 6) Shell retakes terminal and returns */
     tcsetpgrp(STDIN_FILENO, getpid());
     return last_exit;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
