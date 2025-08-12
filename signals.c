@@ -1,8 +1,11 @@
 // signals.c
 #include "signals.h"
 #include <signal.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <termios.h>    // tcsetpgrp()
+#include <unistd.h>     // fork(), pipe(), dup2(), etc.
+#include <sys/wait.h>   // waitpid(), WIFEXITED, etc.
+#include <string.h>     // strcmp()
+#include <stdio.h>      // perror()
 
 
 
