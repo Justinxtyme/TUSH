@@ -371,7 +371,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     for (i = 0; i < num_cmds - 1; ++i) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
-            return -1;
+            return 1;
         }
     }
 
@@ -380,7 +380,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         pids[i] = fork();
         if (pids[i] < 0) {
             perror("fork");
-            return -1;
+            return 1;
         }
 
         if (pids[i] == 0) {
