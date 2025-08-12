@@ -13,6 +13,7 @@
 #include <string.h> // for str maniopulation functions
 #include "debug.h"
 #include "signals.h"
+#include <signal.h>
 
 
 #ifdef _WIN32

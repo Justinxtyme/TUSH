@@ -10,7 +10,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -MMD -MP
 
 # List of source files
-SRC = main.c executor.c builtins.c shell.c input.c signals.c
+SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c
 #include readline library for input handling
 # This library provides functions for reading input with line editing capabilities
 LDFLAGS = -lreadline
