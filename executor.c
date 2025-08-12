@@ -410,12 +410,12 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             // PARENT
             if (i == 0) {
                 pgid = pids[0];
-                if (setpgid(pids[0], pgid) < 0 && errno != EACCES && errno != EINVAL) {
-                    // ignore benign races
-                }
-                // Give the terminal to the job as soon as the group exists,
-                // even while we fork the rest; shell ignores SIGTTOU/SIGTTIN so it won’t get stopped.
-                give_terminal_to_pgid(shell, pgid);
+                for (int attempt = 0; attempt < 5; ++attempt) {
+                     if (setpgid(pids[0], pgid) == 0) break;
+                     if (errno == EACCES || errno == EINVAL) break;
+                     usleep(1000); // small delay to let child setpgid itself
+                     }
+                     give_terminal_to_pgid(shell, pgid);
             } else {
                 if (setpgid(pids[i], pgid) < 0 && errno != EACCES && errno != EINVAL) {
                     // ignore benign races
