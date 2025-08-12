@@ -13,6 +13,8 @@ typedef struct {
     char input[INPUT_SIZE];   // User input buffer
     int running;              // Shell loop control flag
     int  last_status;
+    int   tty_fd;
+    pid_t shell_pgid;
     pid_t last_pgid;    // new field
     char cwd[512];            // Current working directory
     char **history;         // Array of command strings

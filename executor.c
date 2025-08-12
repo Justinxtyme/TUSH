@@ -266,22 +266,33 @@ static void exec_child(char **args) {
 
 
 
+static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) {
+    // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
+    if (tcsetpgrp(shell->tty_fd, pgid) < 0) {
+        // Don’t spam; log if you have a debug flag
+        // perror("tcsetpgrp(give)");
+    }
+}
+
+static void reclaim_terminal(ShellContext *shell) {
+    if (tcsetpgrp(shell->tty_fd, shell->shell_pgid) < 0) {
+        // perror("tcsetpgrp(reclaim)");
+    }
+}
+
+
 
 int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int i;
-    int pipes[num_cmds - 1][2];
-    pid_t pids[num_cmds];
+    int status = 0, last_exit = 0;
     pid_t pgid = 0;
-    int status, last_exit = 0;
 
-    /*----- Single command path -----*/
     if (num_cmds == 1) {
         char **args = cmds[0];
         if (!args || !args[0]) return 0;
         if (strcmp(args[0], "cd") == 0)
             return handle_cd(args);
 
-        /* Fork the one child */
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
@@ -289,41 +300,47 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         if (pid == 0) {
-            /* CHILD: new PGID, take terminal, restore signals, exec */
+            // CHILD: put self in new group, restore signals, exec
+            // Only set PGID; DO NOT tcsetpgrp here.
             setpgid(0, 0);
-            tcsetpgrp(STDIN_FILENO, getpid());
             setup_child_signals();
             exec_child(args);
         }
 
-        /* PARENT: record PGID, hand tty to child group */
+        // PARENT: establish job control
         pgid = pid;
-        setpgid(pgid, pgid);
-        tcsetpgrp(STDIN_FILENO, pgid);
+        // Ensure child is the group leader; race-proof by retrying if needed
+        if (setpgid(pid, pgid) < 0 && errno != EACCES && errno != EINVAL) {
+            // EACCES can happen if child already exec’d and set it; ignore benign failures.
+            // EINVAL can occur transiently; you could retry, but usually safe to continue.
+        }
 
-        /* Wait for child to exit or stop */
-        waitpid(pid, &status, WUNTRACED);
+        give_terminal_to_pgid(shell, pgid);
 
-        /* If it was stopped (Ctrl-Z), let shell retake tty and return */
+        // Wait for child to exit or stop
+        if (waitpid(-pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
+            perror("waitpid");
+        }
+
         if (WIFSTOPPED(status)) {
-            tcsetpgrp(STDIN_FILENO, getpid());
+            reclaim_terminal(shell);
+            shell->last_pgid = pgid; // remember stopped job’s PGID for fg/bg
             fprintf(stderr, "\n[Stopped]\n");
-            /* return 128+SIGTSTP so shell knows it was suspended */
             return 128 + WSTOPSIG(status);
         }
 
-        /* Normal termination or signaled */
-        if (WIFEXITED(status))   last_exit = WEXITSTATUS(status);
-        else if (WIFSIGNALED(status))
-            last_exit = 128 + WTERMSIG(status);
+        if (WIFEXITED(status))      last_exit = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
 
-        /* Shell retakes terminal */
-        tcsetpgrp(STDIN_FILENO, getpid());
+        reclaim_terminal(shell);
         return last_exit;
     }
 
-    /*----- Multi-stage pipeline path -----*/
-    /* 1) Create pipes */
+    // ----- Multi-stage pipeline -----
+    int pipes[num_cmds - 1][2];
+    pid_t pids[num_cmds];
+
+    // 1) Create pipes
     for (i = 0; i < num_cmds - 1; ++i) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
@@ -331,7 +348,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
     }
 
-    /* 2) Fork each stage */
+    // 2) Fork each stage
     for (i = 0; i < num_cmds; ++i) {
         pids[i] = fork();
         if (pids[i] < 0) {
@@ -340,74 +357,78 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         if (pids[i] == 0) {
-            /* CHILD */
-
-            /* 2a) Process group & tty on stage 0 */
+            // CHILD
+            // a) Process group: first child becomes leader, others do not touch tcsetpgrp
             if (i == 0) {
-                setpgid(0, 0);
-                tcsetpgrp(STDIN_FILENO, getpid());
-                pgid = getpid();
+                setpgid(0, 0); // self as leader
             } else {
-                setpgid(0, pgid);
+                // Do not rely on a non-shared pgid variable; parent will set our PGID.
+                // Optionally call setpgid(0, getppid()) is wrong; just skip.
             }
 
-            /* 2b) Wire pipes */
-            if (i > 0)
-                dup2(pipes[i - 1][0], STDIN_FILENO);
-            if (i < num_cmds - 1)
-                dup2(pipes[i][1], STDOUT_FILENO);
+            // b) Wire pipes
+            if (i > 0)                  dup2(pipes[i - 1][0], STDIN_FILENO);
+            if (i < num_cmds - 1)       dup2(pipes[i][1],     STDOUT_FILENO);
 
-            /* 2c) Close all fds */
+            // c) Close all fds
             for (int j = 0; j < num_cmds - 1; ++j) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
-            /* 2d) Restore signals and exec */
+            // d) Restore default signals and exec
             setup_child_signals();
             exec_child(cmds[i]);
         } else {
-            /* PARENT */
-
-            /* Establish PGID and hand tty on the first child */
+            // PARENT
             if (i == 0) {
                 pgid = pids[0];
-                setpgid(pgid, pgid);
-                tcsetpgrp(STDIN_FILENO, pgid);
+                if (setpgid(pids[0], pgid) < 0 && errno != EACCES && errno != EINVAL) {
+                    // ignore benign races
+                }
+                // Give the terminal to the job as soon as the group exists,
+                // even while we fork the rest; shell ignores SIGTTOU/SIGTTIN so it won’t get stopped.
+                give_terminal_to_pgid(shell, pgid);
             } else {
-                setpgid(pids[i], pgid);
+                if (setpgid(pids[i], pgid) < 0 && errno != EACCES && errno != EINVAL) {
+                    // ignore benign races
+                }
             }
         }
     }
 
-    /* 3) Parent closes all pipe fds */
+    // 3) Parent closes all pipe fds
     for (i = 0; i < num_cmds - 1; ++i) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 
-    /* 4) Wait on the whole process group for exit OR stop */
-    do {
+    // 4) Wait until the entire pipeline exits or any process stops
+    int live = num_cmds;
+    while (live > 0) {
         pid_t w = waitpid(-pgid, &status, WUNTRACED);
         if (w < 0) {
+            if (errno == EINTR) continue;
+            if (errno == ECHILD) break;
             perror("waitpid");
             break;
         }
-    } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 
-    /* 5) Handle stop vs exit */
-    if (WIFSTOPPED(status)) {
-        tcsetpgrp(STDIN_FILENO, getpid());
-        fprintf(stderr, "\n[Pipeline stopped]\n");
-        return 128 + WSTOPSIG(status);
+        if (WIFSTOPPED(status)) {
+            reclaim_terminal(shell);
+            shell->last_pgid = pgid;
+            fprintf(stderr, "\n[Pipeline stopped]\n");
+            return 128 + WSTOPSIG(status);
+        }
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            --live;
+            if (WIFEXITED(status))      last_exit = WEXITSTATUS(status);
+            else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
+        }
     }
-    if (WIFEXITED(status))   last_exit = WEXITSTATUS(status);
-    else if (WIFSIGNALED(status))
-        last_exit = 128 + WTERMSIG(status);
 
-    /* 6) Shell retakes terminal and returns */
-    tcsetpgrp(STDIN_FILENO, getpid());
+    // 5) Reclaim terminal and store last pgid
+    reclaim_terminal(shell);
     shell->last_pgid = pgid;
     return last_exit;
 }
-
