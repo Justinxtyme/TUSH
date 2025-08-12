@@ -32,7 +32,7 @@ int main() {
     init_shell(&shell); // Initialize the shell context
     setup_parent_signals();
     initialize_readline();
-    setup_shell_job_control(shell);
+    setup_shell_job_control(&shell);
     // Log shell startup 
     LOG(LOG_LEVEL_INFO, "TUSH started, pid=%d", getpid());
    
