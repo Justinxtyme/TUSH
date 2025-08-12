@@ -26,4 +26,7 @@ void setup_child_signals(void) {
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
     sigaction(SIGTSTP, &sa, NULL);
+    sigaction(SIGTTIN, &sa, NULL);
+    sigaction(SIGTTOU, &sa, NULL);
+    sigaction(SIGCHLD, &sa, NULL);
 }
