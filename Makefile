@@ -29,7 +29,7 @@ all: $(TARGET)
 
 # Link all object files into the final executable
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o $(TARGET) $(LDFLAGS) -lncurses 
+	$(CC) $(CFLAGS) $(OBJ) -o $(TARGET) $(LDFLAGS) -lncurses -ltinfo
  
 # Compile each .c into a .o file
 # $<  = first dependency (e.g., main.c)
