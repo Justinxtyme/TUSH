@@ -1,7 +1,10 @@
 #include "shell.h"
 #include <stdlib.h>
 #include <string.h>
-
+#include <unistd.h>     // open, dup, getpid, setpgid, tcsetpgrp
+#include <fcntl.h>      // O_RDWR, O_CLOEXEC
+#include <errno.h>      // errno, EACCES
+#include <signal.h>
 
 void init_shell(ShellContext *ctx) { // Initialize the shell context
     ctx->history_capacity = 10; // Initial capacity for history
@@ -17,7 +20,7 @@ void add_to_history(ShellContext *ctx, const char *input) { // Add command to hi
 }
 
 // job control
-static void setup_shell_job_control(ShellContext *shell) {
+void setup_shell_job_control(ShellContext *shell) {
     // Open controlling terminal
     shell->tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC);
     if (shell->tty_fd < 0) {

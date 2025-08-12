@@ -27,6 +27,6 @@ void init_shell(ShellContext *ctx); // Initialize shell context
 
 void add_to_history(ShellContext *ctx, const char *input); // Add command to history
 
-static void setup_shell_job_control(ShellContext *shell);
+void setup_shell_job_control(ShellContext *shell);
 #endif
 
