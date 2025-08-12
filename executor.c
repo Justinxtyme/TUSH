@@ -20,6 +20,7 @@
 #include "debug.h"
 #include "signals.h"
 #include <errno.h>
+#include <termios.h>    
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -271,35 +272,48 @@ int launch_pipeline(char ***cmds, int num_cmds) {
     int i;
     int pipes[num_cmds - 1][2];
     pid_t pids[num_cmds];
+    pid_t pgid = 0;
 
-    // Single command? handle built‐ins, then fork+exec_child
+    /* Handle a single command (including built-ins) */
     if (num_cmds == 1) {
         char **args = cmds[0];
         if (!args || !args[0]) return 0;
 
-        // Built-in dispatch
         if (strcmp(args[0], "cd") == 0)
             return handle_cd(args);
 
-        // Fork + exec
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
             return 1;
         }
+
         if (pid == 0) {
+            /* CHILD: new pgid, take terminal, restore signals, exec */
+            setpgid(0, 0);
+            tcsetpgrp(STDIN_FILENO, getpid());
+            setup_child_signals();
             exec_child(args);
         }
 
-        // Parent waits and returns exit code/signal
+        /* PARENT: record pgid, give terminal to child group */
+        pgid = pid;
+        setpgid(pgid, pgid);
+        tcsetpgrp(STDIN_FILENO, pgid);
+
+        /* Wait for the single child */
         int w;
         waitpid(pid, &w, 0);
+
+        /* Restore shell’s terminal control */
+        tcsetpgrp(STDIN_FILENO, getpid());
+
         if (WIFEXITED(w))   return WEXITSTATUS(w);
         if (WIFSIGNALED(w)) return 128 + WTERMSIG(w);
         return 1;
     }
 
-    // Multi‐stage pipeline: create pipes
+    /* Multi-stage pipeline: set up pipes */
     for (i = 0; i < num_cmds - 1; ++i) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
@@ -307,38 +321,62 @@ int launch_pipeline(char ***cmds, int num_cmds) {
         }
     }
 
-    // Fork each stage
+    /* Fork each stage */
     for (i = 0; i < num_cmds; ++i) {
         pids[i] = fork();
         if (pids[i] < 0) {
             perror("fork");
             return -1;
         }
+
         if (pids[i] == 0) {
-            // Child: wire up pipes
+            /* CHILD */
+
+            /* 1) Set up process group and terminal on first stage */
+            if (i == 0) {
+                setpgid(0, 0);
+                tcsetpgrp(STDIN_FILENO, getpid());
+                pgid = getpid();
+            } else {
+                setpgid(0, pgid);
+            }
+
+            /* 2) Redirect pipes */
             if (i > 0)
                 dup2(pipes[i - 1][0], STDIN_FILENO);
             if (i < num_cmds - 1)
                 dup2(pipes[i][1], STDOUT_FILENO);
 
-            // Close all ends
+            /* 3) Close all pipe fds */
             for (int j = 0; j < num_cmds - 1; ++j) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
-            // Exec this stage
+            /* 4) Restore signals and exec */
+            setup_child_signals();
             exec_child(cmds[i]);
+        } else {
+            /* PARENT */
+
+            /* Establish pgid and give terminal on first fork */
+            if (i == 0) {
+                pgid = pids[0];
+                setpgid(pgid, pgid);
+                tcsetpgrp(STDIN_FILENO, pgid);
+            } else {
+                setpgid(pids[i], pgid);
+            }
         }
     }
 
-    // Parent closes all pipe fds
+    /* Parent closes all pipe fds */
     for (i = 0; i < num_cmds - 1; ++i) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 
-    // Wait all children, capture last exit
+    /* Wait for all children, capture last stage exit */
     int last_exit = 0;
     for (i = 0; i < num_cmds; ++i) {
         int w;
@@ -352,9 +390,11 @@ int launch_pipeline(char ***cmds, int num_cmds) {
                 last_exit = 128 + WTERMSIG(w);
         }
     }
+
+    /* Shell retakes terminal */
+    tcsetpgrp(STDIN_FILENO, getpid());
     return last_exit;
 }
-
 
 
 

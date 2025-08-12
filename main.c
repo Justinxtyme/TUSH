@@ -27,6 +27,7 @@
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
     init_shell(&shell); // Initialize the shell context
+    setup_parent_signals();
     initialize_readline();
    
     // Log shell startup 
