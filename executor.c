@@ -243,26 +243,53 @@ static void exec_child(char **args) {
         path_to_exec = args[0];
     } else {
         int r = search_path_alloc(args[0], &resolved);
-        if (r == NOT_FOUND)     _exit(127);
-        if (r == FOUND_DIR)     _exit(126);
-        if (r == FOUND_NOEXEC)  _exit(126);
+        if (r == NOT_FOUND) {
+            fprintf(stderr, "tush: command not found: %s\n", args[0]);
+            _exit(127);
+        }
+        if (r == FOUND_DIR) {
+            fprintf(stderr, "tush: is a directory: %s\n", args[0]);
+            _exit(126);
+        }
+        if (r == FOUND_NOEXEC) {
+            fprintf(stderr, "tush: permission denied: %s\n", args[0]);
+            _exit(126);
+        }
         path_to_exec = resolved;
     }
 
     // 2) Type & perm checks
-    if (is_directory(path_to_exec))           _exit(126);
-    if (is_regular(path_to_exec)
-        && !is_executable(path_to_exec))      _exit(126);
+    if (is_directory(path_to_exec)) {
+        fprintf(stderr, "tush: is a directory: %s\n", path_to_exec);
+        _exit(126);
+    }
+    if (is_regular(path_to_exec) && !is_executable(path_to_exec)) {
+        fprintf(stderr, "tush: permission denied: %s\n", path_to_exec);
+        _exit(126);
+    }
 
     // 3) Reset to default signals in child
     setup_child_signals();
 
-    // 4) Exec—and on failure, pick proper code
+    // 4) Exec — on failure, pick proper code and message
     execve(path_to_exec, args, environ);
     int err = errno;
-    print_exec_error(path_to_exec, err);
-    _exit((err == EACCES || err == ENOEXEC) ? 126 : 127);
+    if (err == ENOEXEC) {
+        fprintf(stderr, "tush: exec format error: %s\n", path_to_exec);
+        _exit(126);
+    } else if (err == EACCES) {
+        fprintf(stderr, "tush: permission denied: %s\n", path_to_exec);
+        _exit(126);
+    } else if (err == ENOENT) {
+        // Prefer the original argv[0] for 'not found'
+        fprintf(stderr, "tush: command not found: %s\n", args[0]);
+        _exit(127);
+    } else {
+        fprintf(stderr, "tush: failed to exec %s: %s\n", path_to_exec, strerror(err));
+        _exit(126);
+    }
 }
+
 
 
 
