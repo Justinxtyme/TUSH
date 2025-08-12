@@ -14,7 +14,7 @@
 //int run_command(char **args);
 char ***parse_pipeline(char *input, int *num_cmds);
 
-int launch_pipeline(char ***cmds, int num_cmds);
+int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds);
 
 int search_path_alloc(const char *cmd, char **outp);
 

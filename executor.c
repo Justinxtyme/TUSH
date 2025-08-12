@@ -267,7 +267,7 @@ static void exec_child(char **args) {
 
 
 
-int launch_pipeline(char ***cmds, int num_cmds) {
+int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int i;
     int pipes[num_cmds - 1][2];
     pid_t pids[num_cmds];
