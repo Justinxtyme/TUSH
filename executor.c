@@ -200,128 +200,7 @@ enum path_lookup {
     }
 }
 
-/*
- * run_command
- * Entry point from the shell for executing a parsed argv (args).
- * Returns an exit status to store in $? and to influence the prompt, etc.
- *
- * Flow:
- * 1) Handle builtins (cd, exit) immediately.
- * 2) If args[0] has no slash: resolve via PATH and short-circuit non-exec cases (no fork).
- * 3) If args[0] has a slash: treat as a path; pre-diagnose directory and permissions.
- * 4) Fork and exec the decided path. On exec failure, print a clean message and return 126/127.
- * 5) Parent waits and returns child's exit status or signal-based status (128+signum).
- */
- int run_command(char **args) {
-    LOG(LOG_LEVEL_INFO, "ENTER run_command args=%p", (void*)args);
-    if (!args || !args[0]) return 0;  // Empty input: no-op, success
 
-    // Builtins first (extend this section as you add more builtins)
-    if (strcmp(args[0], "cd") == 0) {
-        LOG(LOG_LEVEL_INFO, "builtin cd");
-        return handle_cd(args);
-    } else if (strcmp(args[0], "exit") == 0) {
-        LOG(LOG_LEVEL_INFO, "builtin exit");
-        return handle_exit(args);
-    }
-
-    const char *cmd = args[0];
-    const char *path_to_exec = NULL;
-    char *resolved = NULL;  // malloc’d path if resolved via PATH
-    LOG(LOG_LEVEL_INFO, "cmd=\"%s\"", cmd);
-
-    if (has_slash(cmd)) {
-        LOG(LOG_LEVEL_INFO, "treating \"%s\" as literal path", cmd);
-        // Treat argv[0] as a literal path (absolute or relative)
-        if (is_directory(cmd)) {
-            fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
-            return 126;
-        }
-        if (is_regular(cmd) && !is_executable(cmd)) {
-            fprintf(stderr, "%s: %s: Permission denied\n", progname, cmd);
-            return 126;
-        }
-        path_to_exec = cmd;
-    } else {
-        LOG(LOG_LEVEL_INFO, "resolving \"%s\" via PATH", cmd);
-        // No slash → resolve via PATH using malloc-based helper
-        int r = search_path_alloc(cmd, &resolved);
-        if (r == NOT_FOUND) {
-            fprintf(stderr, "%s: command not found: %s\n", progname, cmd);
-            return 127;
-        } else if (r == FOUND_DIR) {
-            fprintf(stderr, "%s: %s: Is a directory\n", progname, cmd);
-            LOG(LOG_LEVEL_WARN, "search_path_alloc → FOUND_DIR");
-            return 126;
-        } else if (r == FOUND_NOEXEC) {
-            fprintf(stderr, "%s: %s: Permission denied\n", progname, cmd);
-            LOG(LOG_LEVEL_WARN, "search_path_alloc → FOUND_NOEXEC");
-            return 126;
-        } else { // FOUND_EXEC
-            path_to_exec = resolved;
-            LOG(LOG_LEVEL_INFO, "search_path_alloc → \"%s\"", resolved);
-        }
-    }
-
-    // At this point we have a candidate path to exec. Fork and run it.
-    pid_t pid = fork();
-    if (pid < 0) {
-        fprintf(stderr, "%s: fork failed: %s\n", progname, strerror(errno));
-        LOG(LOG_LEVEL_ERR, "fork() failed: %s", strerror(errno));
-        if (resolved) free(resolved);
-        return 1;
-    }
-
-    if (pid == 0) {
-        signal(SIGINT, SIG_DFL);
-        signal(SIGQUIT, SIG_DFL);
-        signal(SIGTSTP, SIG_DFL);
-        LOG(LOG_LEVEL_INFO, "in child, execve(\"%s\")", path_to_exec);
-        execve(path_to_exec, args, environ);
-
-        int err = errno;
-
-        if (is_directory(path_to_exec)) {
-            fprintf(stderr, "%s: %s: Is a directory\n", progname, path_to_exec);
-            _exit(126);
-        }
-
-        print_exec_error(path_to_exec, err);
-        int status = (err == EACCES || err == ENOEXEC) ? 126 : 127;
-        _exit(status);
-    }
-
-    // Parent: wait for child and propagate status
-    // Temporarily ignore SIGINT in the shell
-    signal(SIGINT, SIG_IGN);
-    
-    int wstatus = 0;
-    waitpid(pid, &wstatus, 0);
-    signal(SIGINT, handle_sigint);  // or SIG_DFL if you don’t have a custom handler
-    
-    LOG(LOG_LEVEL_INFO, "parent waiting for pid=%d", pid);
-    if (waitpid(pid, &wstatus, 0) < 0) {
-        LOG(LOG_LEVEL_ERR, "waitpid() failed: %s", strerror(errno));
-        fprintf(stderr, "%s: waitpid failed: %s\n", progname, strerror(errno));
-        if (resolved) free(resolved);
-        return 1;
-    }
-
-    if (resolved) free(resolved);  // Clean up malloc’d path
-
-    if (WIFEXITED(wstatus)) {
-        int exit_code = WEXITSTATUS(wstatus);
-        LOG(LOG_LEVEL_INFO, "child exited normally with %d", exit_code);
-        return WEXITSTATUS(wstatus);
-    }
-    if (WIFSIGNALED(wstatus)) {
-        int term_sig = WTERMSIG(wstatus);
-        LOG(LOG_LEVEL_WARN, "child killed by signal %d", term_sig);
-        return 128 + WTERMSIG(wstatus);
-    }
-    LOG(LOG_LEVEL_WARN, "run_command reached unexpected exit path");
-    return 1;
-}
 
 
 
@@ -350,80 +229,150 @@ char ***parse_pipeline(char *input, int *num_cmds) {
     return cmds;
 }
 
+// Resolve, validate, set signals, execve, and _exit with correct code
+static void exec_child(char **args) {
+    char *resolved = NULL;
+    const char *path_to_exec;
+
+    // 1) Path lookup
+    if (has_slash(args[0])) {
+        path_to_exec = args[0];
+    } else {
+        int r = search_path_alloc(args[0], &resolved);
+        if (r == NOT_FOUND)     _exit(127);
+        if (r == FOUND_DIR)     _exit(126);
+        if (r == FOUND_NOEXEC)  _exit(126);
+        path_to_exec = resolved;
+    }
+
+    // 2) Type & perm checks
+    if (is_directory(path_to_exec))           _exit(126);
+    if (is_regular(path_to_exec)
+        && !is_executable(path_to_exec))      _exit(126);
+
+    // 3) Reset to default signals in child
+    setup_child_signals();
+
+    // 4) Exec—and on failure, pick proper code
+    execve(path_to_exec, args, environ);
+    int err = errno;
+    print_exec_error(path_to_exec, err);
+    _exit((err == EACCES || err == ENOEXEC) ? 126 : 127);
+}
+
+
+
 
 /* this function launches a pipeline of N commands.
 it sets up the necessary pipes and forks child processes to execute each command in the pipeline.
 With proper error handling and cleanup. */
 int launch_pipeline(char ***cmds, int num_cmds) {
     int i;
-    int pipes[num_cmds - 1][2]; // Each pipe connects cmd[i] → cmd[i+1]
+    int pipes[num_cmds - 1][2];
     pid_t pids[num_cmds];
-    
-    // if only 1 command, no piping just fork+execute
+
+    // Single command? handle built‐ins, then fork+exec_child
     if (num_cmds == 1) {
-    pid_t pid = fork();
-    if (pid == 0) {
-        execvp(cmds[0][0], cmds[0]);
-        perror("execvp");
-        exit(1);
-    } else {
-        waitpid(pid, NULL, 0);
-    }
-    return 0;
+        char **args = cmds[0];
+        if (!args || !args[0]) return 0;
+
+        // Built-in dispatch
+        if (strcmp(args[0], "cd") == 0)
+            return handle_cd(args);
+
+        // Fork + exec
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            return 1;
+        }
+        if (pid == 0) {
+            exec_child(args);
+        }
+
+        // Parent waits and returns exit code/signal
+        int w;
+        waitpid(pid, &w, 0);
+        if (WIFEXITED(w))   return WEXITSTATUS(w);
+        if (WIFSIGNALED(w)) return 128 + WTERMSIG(w);
+        return 1;
     }
 
-    // Create all pipes
-
-    for (i = 0; i < num_cmds - 1; i++) { 
-        if (pipe(pipes[i]) == -1) { 
+    // Multi‐stage pipeline: create pipes
+    for (i = 0; i < num_cmds - 1; ++i) {
+        if (pipe(pipes[i]) < 0) {
             perror("pipe");
             return -1;
         }
     }
 
-    for (i = 0; i < num_cmds; i++) { 
+    // Fork each stage
+    for (i = 0; i < num_cmds; ++i) {
         pids[i] = fork();
-        if (pids[i] == -1) {
+        if (pids[i] < 0) {
             perror("fork");
             return -1;
         }
-
         if (pids[i] == 0) {
-            // Child process
-
-            // If not first command, redirect stdin from previous pipe
-            if (i > 0) {
+            // Child: wire up pipes
+            if (i > 0)
                 dup2(pipes[i - 1][0], STDIN_FILENO);
-            }
-
-            // If not last command, redirect stdout to next pipe
-            if (i < num_cmds - 1) {
+            if (i < num_cmds - 1)
                 dup2(pipes[i][1], STDOUT_FILENO);
-            }
 
-            // Close all pipe ends in child
-            for (int j = 0; j < num_cmds - 1; j++) {
+            // Close all ends
+            for (int j = 0; j < num_cmds - 1; ++j) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
-            // Execute command
-            execvp(cmds[i][0], cmds[i]);
-            perror("execvp");
-            exit(1);
+            // Exec this stage
+            exec_child(cmds[i]);
         }
     }
 
-    // Parent closes all pipe ends
-    for (i = 0; i < num_cmds - 1; i++) { 
+    // Parent closes all pipe fds
+    for (i = 0; i < num_cmds - 1; ++i) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 
-    // Wait for all children
-    for (i = 0; i < num_cmds; i++) {
-        waitpid(pids[i], NULL, 0);
+    // Wait all children, capture last exit
+    int last_exit = 0;
+    for (i = 0; i < num_cmds; ++i) {
+        int w;
+        if (waitpid(pids[i], &w, 0) < 0) {
+            perror("waitpid");
+            continue;
+        }
+        if (i == num_cmds - 1) {
+            if (WIFEXITED(w))   last_exit = WEXITSTATUS(w);
+            else if (WIFSIGNALED(w))
+                last_exit = 128 + WTERMSIG(w);
+        }
     }
-
-    return 0;
+    return last_exit;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
