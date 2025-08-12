@@ -5,6 +5,7 @@
 #include "input.h"
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
+#include "jobs.h"
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
