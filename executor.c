@@ -29,6 +29,9 @@
 #include <unistd.h>
 #include <signal.h>
 
+#define MAX_CMDS 16
+#define MAX_ARGS 64
+
 #define bool _Bool
 
 extern char **environ;  // Environment passed to execve
@@ -107,7 +110,7 @@ enum path_lookup {
 };
 
 /*
- * search_path
+ * search_path_alloc
  * Resolve a command name (no slash) against PATH, trying each segment.
  *
  * On success (FOUND_EXEC):
@@ -173,11 +176,6 @@ enum path_lookup {
  * Map common errno values from a failed execve to user-friendly, shell-like errors.
  * This keeps output consistent and avoids raw perror prefixes.
  */
-
- // INTEGRATE WITH DEBUG!
-  // INTEGRATE WITH DEBUG!
-   // INTEGRATE WITH DEBUG!
-    // INTEGRATE WITH DEBUG!
  void print_exec_error(const char *what, int err) {
     switch (err) {
         case EACCES:
@@ -323,4 +321,109 @@ enum path_lookup {
     }
     LOG(LOG_LEVEL_WARN, "run_command reached unexpected exit path");
     return 1;
+}
+
+
+
+char ***parse_pipeline(char *input, int *num_cmds) {
+    static char **cmds[MAX_CMDS];  // array of command argv[]
+    static char *args[MAX_CMDS][MAX_ARGS];  // storage for each argv[]
+    int cmd_index = 0;
+    int arg_index = 0;
+
+    char *token = strtok(input, " ");
+    while (token != NULL) {
+        if (strcmp(token, "|") == 0) {
+            args[cmd_index][arg_index] = NULL;  // terminate argv
+            cmds[cmd_index] = args[cmd_index];  // store argv
+            cmd_index++;
+            arg_index = 0;
+        } else {
+            args[cmd_index][arg_index++] = token;
+        }
+        token = strtok(NULL, " ");
+    }
+
+    args[cmd_index][arg_index] = NULL;
+    cmds[cmd_index] = args[cmd_index];
+    *num_cmds = cmd_index + 1;
+    return cmds;
+}
+
+
+/* this function launches a pipeline of N commands.
+it sets up the necessary pipes and forks child processes to execute each command in the pipeline.
+With proper error handling and cleanup. */
+int launch_pipeline(char ***cmds, int num_cmds) {
+    int i;
+    int pipes[num_cmds - 1][2]; // Each pipe connects cmd[i] → cmd[i+1]
+    pid_t pids[num_cmds];
+    
+    // if only 1 command, no piping just fork+execute
+    if (num_cmds == 1) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        execvp(cmds[0][0], cmds[0]);
+        perror("execvp");
+        exit(1);
+    } else {
+        waitpid(pid, NULL, 0);
+    }
+    return 0;
+    }
+
+    // Create all pipes
+
+    for (i = 0; i < num_cmds - 1; i++) { 
+        if (pipe(pipes[i]) == -1) { 
+            perror("pipe");
+            return -1;
+        }
+    }
+
+    for (i = 0; i < num_cmds; i++) { 
+        pids[i] = fork();
+        if (pids[i] == -1) {
+            perror("fork");
+            return -1;
+        }
+
+        if (pids[i] == 0) {
+            // Child process
+
+            // If not first command, redirect stdin from previous pipe
+            if (i > 0) {
+                dup2(pipes[i - 1][0], STDIN_FILENO);
+            }
+
+            // If not last command, redirect stdout to next pipe
+            if (i < num_cmds - 1) {
+                dup2(pipes[i][1], STDOUT_FILENO);
+            }
+
+            // Close all pipe ends in child
+            for (int j = 0; j < num_cmds - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+
+            // Execute command
+            execvp(cmds[i][0], cmds[i]);
+            perror("execvp");
+            exit(1);
+        }
+    }
+
+    // Parent closes all pipe ends
+    for (i = 0; i < num_cmds - 1; i++) { 
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+
+    // Wait for all children
+    for (i = 0; i < num_cmds; i++) {
+        waitpid(pids[i], NULL, 0);
+    }
+
+    return 0;
 }

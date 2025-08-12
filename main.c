@@ -2,13 +2,13 @@
  it will support basic built-in commands like 'cd', 'exit', and 'ls'   
  and other posix commands */
 
-#include <stdio.h> // for printf, fgets, perror
 #include "input.h"
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <stdio.h> // for printf, fgets, perror
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
 #include "debug.h"
@@ -21,20 +21,6 @@
     #include <unistd.h> //// for POSIX functions like fork, execvp, chdir
 #endif 
 
-
-
-// --- Tokenizer (temporary inline version) ---
-char **tokenize_input(char *input) {
-    static char *args[64]; // max 64 tokens
-    int i = 0;
-    char *token = strtok(input, " ");
-    while (token != NULL && i < 63) {
-        args[i++] = token;
-        token = strtok(NULL, " ");
-    }
-    args[i] = NULL;
-    return args;
-}
 
 
 // --- Main Loop ---
@@ -55,19 +41,20 @@ int main() {
             break; // Ctrl+D or error
         }
 
-       add_to_history(&shell, shell.input); // adds input to history, for reuse
+        add_to_history(&shell, shell.input); // adds input to history, for reuse
 
-        char **args = tokenize_input(shell.input);
-        if (args[0] == NULL) continue; // empty input
+        int num_cmds = 0;
+        char ***cmds = parse_pipeline(shell.input, &num_cmds);
+        if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
 
-        if (strcmp(args[0], "exit") == 0) {
+        if (strcmp(cmds[0][0], "exit") == 0) {
             shell.running = 0;
         } else {
-            run_command(args); // ⬅️ Dispatch to executor
-        }
+            launch_pipeline(cmds, num_cmds);
+          }
     }
     cleanup_readline();
     return 0;
 }
-
+    
 
