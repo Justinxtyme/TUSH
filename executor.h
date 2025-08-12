@@ -7,7 +7,7 @@
 #include <stdlib.h>    // for exit
 #include <string.h>    // for strcmp, strtok
 #include <stdio.h>
-
+#include "shell.h"
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
