@@ -12,6 +12,7 @@
 #include <stdlib.h> // for exit,
 #include <string.h> // for str maniopulation functions
 #include "debug.h"
+#include "signals.h"
 
 
 #ifdef _WIN32
