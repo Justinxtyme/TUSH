@@ -18,6 +18,7 @@
 #include "executor.h"
 #include "builtins.h"
 #include "debug.h"
+#include "signals.h"
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
