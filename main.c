@@ -54,7 +54,9 @@ int main() {
         if (strcmp(cmds[0][0], "exit") == 0) {
             shell.running = 0;
         } else {
-            int status = launch_pipeline(cmds, num_cmds);
+            int status = launch_pipeline(&shell, cmds, num_cmds);;
+
+
 
             // 1) Save for “$?” 
             shell.last_status = status;
