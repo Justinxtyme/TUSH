@@ -28,6 +28,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -405,6 +406,7 @@ int launch_pipeline(char ***cmds, int num_cmds) {
 
     /* 6) Shell retakes terminal and returns */
     tcsetpgrp(STDIN_FILENO, getpid());
+    shell->last_pgid = pgid;
     return last_exit;
 }
 

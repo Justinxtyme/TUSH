@@ -52,8 +52,22 @@ int main() {
         if (strcmp(cmds[0][0], "exit") == 0) {
             shell.running = 0;
         } else {
-            launch_pipeline(cmds, num_cmds);
-          }
+            int status = launch_pipeline(cmds, num_cmds);
+
+            // 1) Save for “$?” 
+            shell.last_status = status;
+
+            // 2) If stopped, add to jobs
+            if (status == 128 + SIGTSTP) {
+            add_job(shell.last_pgid, shell.input);
+            fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id()-1, shell.input);
+            }
+
+            // 3) Maybe log it
+            LOG(LOG_LEVEL_TRACE, "pipeline exited/stopped with %d", status);
+        }
+
+            // 4) free cmds…
     }
     cleanup_readline();
     return 0;

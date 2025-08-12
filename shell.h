@@ -3,7 +3,8 @@
  It includes necessary libraries and defines constants for input size and history management
  It is used to manage the shell's state, user input, and command history */
 
-#ifndef SHELL_H
+#include <sys/types.h>
+ #ifndef SHELL_H
 #define SHELL_H
 
 #define INPUT_SIZE 1024
@@ -11,6 +12,8 @@
 typedef struct {
     char input[INPUT_SIZE];   // User input buffer
     int running;              // Shell loop control flag
+    int  last_status;
+    pid_t last_pgid;    // new field
     char cwd[512];            // Current working directory
     char **history;         // Array of command strings
     int history_size;       // Number of stored commands
