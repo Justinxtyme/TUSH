@@ -56,6 +56,8 @@ int main() {
         }
         LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
 
+
+
         char ***cmds = parse_pipeline(expanded, &num_cmds);
         LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
 
@@ -80,7 +82,7 @@ int main() {
             }
 
             // 3) Maybe log it
-            //LOG(LOG_LEVEL_TRACE, "pipeline exited/stopped with %d", status);
+            LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
         }
 
             // 4) free cmds…

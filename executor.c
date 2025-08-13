@@ -10,10 +10,11 @@
        * found directory → "is a directory" (exit 126), no fork
        * found non-exec  → "permission denied" (exit 126), no fork
        * found exec file → fork + exec
- - On exec failure, print a clean one-line error and exit with:
+
+       - On exec failure, print a clean one-line error and exit with:
        * 126 for non-runnable files (EACCES, ENOEXEC, directory)
        * 127 for missing files (ENOENT, ENOTDIR)
-
+ - 
  Pipeline execution:
  - Allocates pipes and pids dynamically (no VLAs).
  - Forks each stage, wires stdin/stdout via dup2(), and sets CLOEXEC on pipe fds.
@@ -51,7 +52,7 @@
 #define MAX_CMDS 16
 #define MAX_ARGS 64
 
-#define bool _Bool
+//#define bool _Bool
 
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
@@ -447,7 +448,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             exec_child(args);
             _exit(127);
         }
-
+            last_status
         pgid = pid;
         shell->pipeline_pgid = pgid;
 
@@ -529,7 +530,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
                     continue;
                 }
             }
-
+                
             // other builtins...
     }
         pids[i] = fork(); 

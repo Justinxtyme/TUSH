@@ -5,10 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <readline/readline.h> 
 #include <readline/history.h> 
 #include "input.h" // 
 #include <unistd.h> // for getcwd
+#include "debug.h"
 
 /*Initialize readline library. This function sets up readline for input handling
  It can be used to enable features like command history and line editing */
@@ -42,3 +44,36 @@ int read_input(ShellContext *ctx) {
     free(line); // readline allocates with malloc
     return 1;
 }
+
+bool is_numeric(const char *s) {
+    if (!s) return false;
+
+    // Skip leading whitespace
+    while (isspace((unsigned char)*s)) s++;
+
+    if (!*s) return false; // empty after trimming
+
+    for (; *s; s++) {
+        if (!isdigit((unsigned char)*s)) return false;
+    }
+
+    return true;
+}
+
+bool handle_literal_expansion(ShellContext *shell, const char *expanded) {
+    if (!is_numeric(expanded)) {
+        return false;
+    }
+
+    LOG(LOG_LEVEL_INFO, "Intercepted numeric literal: '%s'", expanded);
+
+    char *args[] = { "echo", (char *)expanded, NULL };
+    char **cmds[] = { args };
+
+    LOG(LOG_LEVEL_INFO, "Launching echo pipeline for literal '%s'", expanded);
+    launch_pipeline(shell, cmds, 1);
+
+    return true;
+}
+
+
