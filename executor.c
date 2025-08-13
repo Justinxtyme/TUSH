@@ -1,19 +1,33 @@
-// executor.c
-// TUSH external command execution with clear, shell-like errors and correct exit codes.
-//
-// Behavior summary:
-// - Builtins (cd, exit) handled here and returned directly.
-// - Non-builtins:
-//   - If argv[0] contains a slash, treat it as a path and diagnose it.
-//   - If no slash, search PATH yourself to differentiate:
-//       * not found       → "command not found" (exit 127), no fork
-//       * found directory → "Is a directory" (exit 126), no fork
-//       * found non-exec  → "Permission denied" (exit 126), no fork
-//       * found exec file → fork + exec
-// - On exec failure, print a clean one-line error and exit with:
-//       * 126 when found but not runnable (EACCES, ENOEXEC, directory)
-//       * 127 when not found (ENOENT, ENOTDIR path prefix issues)
-// This avoids the generic "exec: No such file or directory" for every case.
+/* =========================================== executor.c ======================================================
+ TUSH command execution and pipeline orchestration with Bash-like semantics.
+
+ Responsibilities:
+ - Builtins (e.g., cd) handled directly and returned without forking.
+ - External commands:
+   - If argv[0] contains a slash, treat as a path and validate directly.
+   - If no slash, search $PATH manually to distinguish:
+       * not found       → "command not found" (exit 127), no fork
+       * found directory → "is a directory" (exit 126), no fork
+       * found non-exec  → "permission denied" (exit 126), no fork
+       * found exec file → fork + exec
+ - On exec failure, print a clean one-line error and exit with:
+       * 126 for non-runnable files (EACCES, ENOEXEC, directory)
+       * 127 for missing files (ENOENT, ENOTDIR)
+
+ Pipeline execution:
+ - Allocates pipes and pids dynamically (no VLAs).
+ - Forks each stage, wires stdin/stdout via dup2(), and sets CLOEXEC on pipe fds.
+ - Assigns a shared process group (PGID) for job control.
+ - Handles terminal handoff and reclaiming via tcsetpgrp().
+ - Tracks last command’s PID to return accurate pipeline exit status.
+ - Cleans up all fds and memory on every exit path.
+
+ Signal handling:
+ - Shell ignores SIGINT, SIGQUIT, SIGTSTP, SIGTTIN, SIGTTOU.
+ - Children restore default signals before exec.
+ - Optional SIGCHLD blocking is available to prevent early reaping.
+
+ This file ensures robust, race-tolerant execution with clear diagnostics and correct exit codes. */
 
 #include "executor.h"
 #include "builtins.h"
@@ -55,12 +69,7 @@ bool has_slash(const char *s) {
     bool found = (s && strchr(s, '/') != NULL);
     LOG(LOG_LEVEL_INFO, "  has_slash → %s", found ? "true" : "false");
     return found;
-
-
-
-
 }
-
 /*
  * is_directory
  * stat(2) the path and report whether it's a directory.
@@ -72,9 +81,6 @@ bool is_directory(const char *path) {
     bool rd = (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
     LOG(LOG_LEVEL_INFO, "  is_directory → %s", rd ? "true" : "false");
     return rd;
-
-
-
 }
 
 /*
@@ -87,7 +93,6 @@ bool is_regular(const char *path) {
     LOG(LOG_LEVEL_INFO, "ENTER is_regular(\"%s\")", path ? path : "(null)");
     bool rg = (stat(path, &st) == 0 && S_ISREG(st.st_mode));
     LOG(LOG_LEVEL_INFO, "  is_regular → %s", rg ? "true" : "false");
-
     return rg;
 }
 
@@ -100,7 +105,6 @@ bool is_executable(const char *path) {
     LOG(LOG_LEVEL_INFO, "ENTER is_executable(\"%s\")", path ? path : "(null)");
     bool ex = (access(path, X_OK) == 0);
     LOG(LOG_LEVEL_INFO, "  is_executable → %s", ex ? "true" : "false");
-
     return ex;
 }
 
@@ -140,38 +144,35 @@ enum path_lookup {
 
     int found_noexec = 0, found_dir = 0;
 
-    for (const char *p = path; ; ) {
-        const char *colon = strchr(p, ':');
-        size_t seg_len = colon ? (size_t)(colon - p) : strlen(p);
+    for (const char *p = path; ; ) { // Iterate over each segment of the PATH
+        const char *colon = strchr(p, ':'); // Find the next colon
+        size_t seg_len = colon ? (size_t)(colon - p) : strlen(p); // Get segment length
+        size_t need = (seg_len ? seg_len + 1 : 2) + strlen(cmd) + 1; // Calculate total length needed
+        char *candidate = malloc(need); // Allocate memory for the candidate path
+        if (!candidate) return NOT_FOUND; // Handle malloc failure
 
-        size_t need = (seg_len ? seg_len + 1 : 2) + strlen(cmd) + 1;
-        char *candidate = malloc(need);
-        if (!candidate) return NOT_FOUND;
-
-        if (seg_len == 0)
-            snprintf(candidate, need, "./%s", cmd);
+        if (seg_len == 0)  // Current directory
+            snprintf(candidate, need, "./%s", cmd); // "./cmd" if empty segment
         else
-            snprintf(candidate, need, "%.*s/%s", (int)seg_len, p, cmd);
+            snprintf(candidate, need, "%.*s/%s", (int)seg_len, p, cmd); // "<segment>/<cmd>" if not empty
 
-        if (is_directory(candidate)) {
+        if (is_directory(candidate)) { 
             found_dir = 1;
             free(candidate);
-        } else if (is_regular(candidate)) {
+        } else if (is_regular(candidate)) { 
             if (is_executable(candidate)) {
                 *outp = candidate;  // caller takes ownership
                 return FOUND_EXEC;
             } else {
-                found_noexec = 1;
-                free(candidate);
+                found_noexec = 1; // Remember non-executable regular file
+                free(candidate); // Free memory for non-executable regular file
             }
         } else {
             free(candidate);
         }
-
         if (!colon) break;
         p = colon + 1;
     }
-
     if (found_noexec) return FOUND_NOEXEC;
     if (found_dir)    return FOUND_DIR;
     return NOT_FOUND;
@@ -205,10 +206,9 @@ enum path_lookup {
     }
 }
 
-
-
-
-
+/* parse_pipeline - Split input into separate commands for a pipeline
+   it returns an array of command arguments (argv)
+   while also updating the num_cmds variable to reflect the number of commands found.*/
 char ***parse_pipeline(char *input, int *num_cmds) {
     static char **cmds[MAX_CMDS];  // array of command argv[]
     static char *args[MAX_CMDS][MAX_ARGS];  // storage for each argv[]
@@ -234,7 +234,11 @@ char ***parse_pipeline(char *input, int *num_cmds) {
     return cmds;
 }
 
+//=====================================EXEC_CHILD================================================
+// used for executing child processes, including resolving paths and setting up the environment
+// args: command arguments, including argv[0] (the command to execute)  
 // Resolve, validate, set signals, execve, and _exit with correct code
+// ==============================================================================================
 static void exec_child(char **args) {
     char *resolved = NULL;
     const char *path_to_exec;
@@ -291,10 +295,7 @@ static void exec_child(char **args) {
     }
 }
 
-
-
-
-static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) {
+static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) { 
     // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
     if (tcsetpgrp(shell->tty_fd, pgid) < 0) {
         // Don’t spam; log if you have a debug flag
@@ -317,12 +318,10 @@ static void try_setpgid(pid_t pid, pid_t pgid) {
 }
 
 
-
-
-int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
-    int i;
-    int status = 0, last_exit = 0;
-    pid_t pgid = 0;
+int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) { 
+    int i; // loop index
+    int status = 0, last_exit = 0; // process status and last exit code
+    pid_t pgid = 0; // process group ID for the pipeline
 
     shell->pipeline_pgid = 0; // reset at start
 
@@ -337,8 +336,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     // ... fork + setpgid sequence ...
     sigprocmask(SIG_SETMASK, &oldmask, NULL);
     */
-
-    if (num_cmds == 1) {
+    if (num_cmds == 1) {    // Handle single command case
         char **args = cmds[0];
         if (!args || !args[0]) {
             //sigprocmask(SIG_SETMASK, &oldmask, NULL);
@@ -350,12 +348,12 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         pid_t pid = fork();
+        
         if (pid < 0) {
             perror("fork");
             //sigprocmask(SIG_SETMASK, &oldmask, NULL);
             return 1;
         }
-
         if (pid == 0) {
             setpgid(0, 0);
             setup_child_signals();
@@ -374,7 +372,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         give_terminal_to_pgid(shell, pgid);
         //sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
-        if (waitpid(-pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
+        if (waitpid(pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
             perror("waitpid");
         }
 
@@ -392,19 +390,20 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         shell->pipeline_pgid = 0;
         return last_exit;
     }
-
-    pid_t *pids = calloc(num_cmds, sizeof(pid_t));
-    if (!pids) {
+    
+    // Multiple commands in a pipeline
+    pid_t *pids = calloc(num_cmds, sizeof(pid_t)); // array of process IDs
+    if (!pids) { // check for allocation failure
         perror("calloc pids");
         //sigprocmask(SIG_SETMASK, &oldmask, NULL);
         shell->pipeline_pgid = 0;
         return 1;
     }
 
-    int (*pipes)[2] = NULL;
-    if (num_cmds > 1) {
-        pipes = calloc(num_cmds - 1, sizeof(int[2]));
-        if (!pipes) {
+    int (*pipes)[2] = NULL; // array of pipes for inter-process communication
+    if (num_cmds > 1) { 
+        pipes = calloc(num_cmds - 1, sizeof(int[2])); 
+        if (!pipes) { 
             perror("calloc pipes");
             free(pids);
             //sigprocmask(SIG_SETMASK, &oldmask, NULL);
@@ -440,9 +439,9 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
 
     pid_t last_pid = -1;
     int final_status = 0, got_last = 0;
-
-    for (i = 0; i < num_cmds; ++i) {
-        pids[i] = fork();
+    
+    for (i = 0; i < num_cmds; ++i) { 
+        pids[i] = fork(); 
         if (pids[i] < 0) {
             perror("fork");
             if (pipes) {
