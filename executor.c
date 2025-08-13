@@ -507,6 +507,16 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
                 shell->pipeline_pgid = 0;
                 continue;
             }
+            if (strcmp(cmds[i][0], "exit") == 0) {
+                if (num_cmds == 1) {
+                    shell->running = 0;
+                    return 0;
+                } else {
+                    fprintf(stderr, "tush: builtin 'exit' cannot be used in a pipeline\n");
+                    continue;
+                }
+            }
+
             // other builtins...
     }
         pids[i] = fork(); 
