@@ -79,7 +79,7 @@ int main() {
             }
 
             // 3) Maybe log it
-            LOG(LOG_LEVEL_TRACE, "pipeline exited/stopped with %d", status);
+            //LOG(LOG_LEVEL_TRACE, "pipeline exited/stopped with %d", status);
         }
 
             // 4) free cmds…
