@@ -503,8 +503,9 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         if (is_builtin(cmds[i][0])) {
             if (strcmp(cmds[i][0], "cd") == 0) {
                 handle_cd(cmds[i]);
+                reclaim_terminal(shell);
                 shell->pipeline_pgid = 0;
-                continue;
+                return 0;
             }
             // other builtins...
     }
