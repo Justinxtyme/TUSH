@@ -103,7 +103,7 @@ static pipe_pair_t *create_pipes(int num_cmds) {
 
     return pipes;
 }
-}
+
 
 extern char **environ;  // Environment passed to execve
 
