@@ -504,11 +504,11 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     
     for (i = 0; i < num_cmds; ++i) { 
         if (!cmds[i]) {
-            LOG(LOG_LEVEL_ERROR, "cmds[%d] is NULL", i);
+            LOG(LOG_LEVEL_INFO, "cmds[%d] is NULL", i);
             continue;
         }
         if (!cmds[i][0]) {
-            LOG(LOG_LEVEL_ERROR, "cmds[%d][0] is NULL", i);
+            LOG(LOG_LEVEL_INFO, "cmds[%d][0] is NULL", i);
             continue;
         }
         LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);        
