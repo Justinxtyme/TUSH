@@ -580,12 +580,11 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             exec_child(cmds[i]);
             _exit(127);
         } else {
-            if (i == 0) {
-                pgid = pids[0];
+            // parent: first real child, regardless of i
+            if (pgid == 0) {
+                pgid = pids[i];
                 shell->pipeline_pgid = pgid;
-
                 try_setpgid(pids[i], pgid);
-
                 give_terminal_to_pgid(shell, pgid);
             } else {
                 try_setpgid(pids[i], pgid);
