@@ -53,6 +53,58 @@
 
 #define bool _Bool
 
+
+// A pipe consists of two fds: [0]=read end, [1]=write end.
+typedef int pipe_pair_t[2];
+/*
+ * create_pipes
+ * -------------
+ * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
+ * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
+ * On failure closes any fds opened so far, frees the array, and returns NULL.
+ */
+static pipe_pair_t *create_pipes(int num_cmds) {
+    int count = num_cmds - 1;
+    if (count <= 0) {
+        return NULL;
+    }
+
+    pipe_pair_t *pipes = calloc(count, sizeof(pipe_pair_t));
+    if (!pipes) {
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+#if defined(HAVE_PIPE2)
+        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
+#else
+        if (pipe(pipes[i]) < 0) {
+#endif
+            // tear down what we built so far
+            for (int j = 0; j < i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#ifndef HAVE_PIPE2
+        if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
+            for (int j = 0; j <= i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#endif
+    }
+
+    return pipes;
+}
+}
+
 extern char **environ;  // Environment passed to execve
 
 // Program prefix for error messages. Consider wiring this to your prompt name.
@@ -400,41 +452,13 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         return 1;
     }
 
-    int (*pipes)[2] = NULL; // array of pipes for inter-process communication
-    if (num_cmds > 1) { 
-        pipes = calloc(num_cmds - 1, sizeof(int[2])); 
-        if (!pipes) { 
-            perror("calloc pipes");
-            free(pids);
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
-            shell->pipeline_pgid = 0;
-            return 1;
-        }
-    }
-
-    // Create pipes with CLOEXEC for safety
-    for (i = 0; i < num_cmds - 1; ++i) {
-    #ifdef HAVE_PIPE2
-        if (pipe2(pipes[i], O_CLOEXEC) < 0)
-    #else
-        if (pipe(pipes[i]) < 0)
-    #endif
-        {
-            perror("pipe");
-            for (int j = 0; j < i; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
-            }
-            free(pipes);
-            free(pids);
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
-            shell->pipeline_pgid = 0;
-            return 1;
-        }
-    #ifndef HAVE_PIPE2
-        fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC);
-        fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC);
-    #endif
+        // Allocate and initialize all needed pipes at once
+    pipe_pair_t *pipes = create_pipes(num_cmds);
+    if (num_cmds > 1 && !pipes) {
+        perror("pipe setup");
+        free(pids);
+        shell->pipeline_pgid = 0;
+        return 1;
     }
 
     pid_t last_pid = -1;
