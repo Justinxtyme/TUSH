@@ -7,7 +7,8 @@ CC = gcc
 # -g     → include debug info for gdb
 # -MMD   → generate a .d file listing header dependencies
 # -MP    → add "dummy" rules so make won't break if a header is deleted
-CFLAGS = -Wall -Wextra -g -MMD -MP
+CFLAGS = -Wall -Wextra -g -MMD -MP -DDEBUG
+
 
 # List of source files
 SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c
