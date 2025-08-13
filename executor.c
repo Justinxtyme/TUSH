@@ -308,6 +308,14 @@ static void reclaim_terminal(ShellContext *shell) {
     }
 }
 
+static void try_setpgid(pid_t pid, pid_t pgid) {
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        if (setpgid(pid, pgid) == 0) return;
+        if (errno == EACCES || errno == EINVAL || errno == EPERM) return;
+        usleep(5000);
+    }
+}
+
 
 
 
@@ -485,18 +493,11 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
                 pgid = pids[0];
                 shell->pipeline_pgid = pgid;
 
-                for (int attempt = 0; attempt < 5; ++attempt) {
-                    if (setpgid(pids[0], pgid) == 0) break;
-                    if (errno == EACCES || errno == EINVAL || errno == EPERM) break;
-                    usleep(5000);
-                }
+                try_setpgid(pids[i], pgid);
+
                 give_terminal_to_pgid(shell, pgid);
             } else {
-                for (int attempt = 0; attempt < 5; ++attempt) {
-                    if (setpgid(pids[i], pgid) == 0) break;
-                    if (errno == EACCES || errno == EINVAL || errno == EPERM) break;
-                    usleep(5000);
-                }
+                try_setpgid(pids[i], pgid);
             }
         }
     }
