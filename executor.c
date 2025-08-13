@@ -505,7 +505,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
                 handle_cd(cmds[i]);
                 reclaim_terminal(shell);
                 shell->pipeline_pgid = 0;
-                return 0;
+                continue;
             }
             // other builtins...
     }
