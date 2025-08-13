@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 int handle_cd(char **args) {
     const char *path = args[1] ? args[1] : getenv("HOME");
@@ -15,4 +16,10 @@ int handle_cd(char **args) {
 
 int handle_exit(char **args) {
     exit(0);
+}
+
+
+// add builtins as needed
+bool is_builtin(const char *cmd) {
+    return strcmp(cmd, "cd") == 0 || strcmp(cmd, "exit") == 0;
 }
