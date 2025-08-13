@@ -495,22 +495,22 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         shell->pipeline_pgid = 0;
         return 1;
     }
-    //if (is_builtin(cmds[i][0])) {
-     //   if (strcmp(cmds[i][0], "cd") == 0) {
-      //      handle_cd(cmds[i]);
-      //      continue;
-      //  }
-        // other builtins...
-   // }
-
-
+    
     pid_t last_pid = -1;
     int final_status = 0, got_last = 0;
     
     for (i = 0; i < num_cmds; ++i) { 
+        if (is_builtin(cmds[i][0])) {
+            if (strcmp(cmds[i][0], "cd") == 0) {
+                handle_cd(cmds[i]);
+                shell->pipeline_pgid = 0;
+                continue;
+            }
+            // other builtins...
+    }
         pids[i] = fork(); 
         if (pids[i] < 0) {
-            perror("fork");
+            perror("fork");   
             if (pipes) {
                 for (int j = 0; j < num_cmds - 1; ++j) {
                     close(pipes[j][0]);
