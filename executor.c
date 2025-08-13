@@ -448,7 +448,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             exec_child(args);
             _exit(127);
         }
-            last_status
+        
         pgid = pid;
         shell->pipeline_pgid = pgid;
 
