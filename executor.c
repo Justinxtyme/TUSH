@@ -108,36 +108,29 @@ char *expand_variables(const char *input, int last_exit) {
     if (!input) return NULL;
 
     const char *needle = "$?";
-    size_t needle_len = 2;
+    char *pos = strstr(input, needle);
+    if (!pos) {
+        // No variable to expand — return a copy
+        return strdup(input);
+    }
 
     // Convert last_exit to string
     char exit_str[16];
     snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
-    size_t exit_len = strlen(exit_str);
 
-    // First pass: count how many "$?" occurrences
+    // Allocate enough space: original + extra digits
     size_t input_len = strlen(input);
-    size_t count = 0;
-    for (size_t i = 0; i < input_len - 1; ++i) {
-        if (input[i] == '$' && input[i + 1] == '?') {
-            ++count;
-            ++i; // skip next char
-        }
-    }
-
-    // Compute final size
-    size_t result_len = input_len + count * (exit_len - needle_len) + 1;
+    size_t result_len = input_len + 16;  // generous buffer
     char *result = calloc(1, result_len);
     if (!result) return NULL;
 
-    // Second pass: build output
     const char *src = input;
     char *dst = result;
 
     while (*src) {
         if (src[0] == '$' && src[1] == '?') {
-            memcpy(dst, exit_str, exit_len);
-            dst += exit_len;
+            strcpy(dst, exit_str);
+            dst += strlen(exit_str);
             src += 2;
         } else {
             *dst++ = *src++;
