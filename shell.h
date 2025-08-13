@@ -16,6 +16,7 @@ typedef struct {
     int   tty_fd;
     pid_t shell_pgid;
     pid_t last_pgid;    // new field
+    pid_t pipeline_pgid;
     char cwd[512];            // Current working directory
     char **history;         // Array of command strings
     int history_size;       // Number of stored commands

@@ -309,128 +309,209 @@ static void reclaim_terminal(ShellContext *shell) {
 
 
 
+
 int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int i;
     int status = 0, last_exit = 0;
     pid_t pgid = 0;
 
+    shell->pipeline_pgid = 0; // reset at start
+
+    // Defensive SIGCHLD block to prevent async reaper from stealing statuses
+    // Currently not needed — no SIGCHLD handler exists. Uncomment if you add
+    // background job monitoring or async waitpid() calls elsewhere.
+    /*
+    sigset_t block, oldmask;
+    sigemptyset(&block);
+    sigaddset(&block, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &block, &oldmask);
+    // ... fork + setpgid sequence ...
+    sigprocmask(SIG_SETMASK, &oldmask, NULL);
+    */
+
     if (num_cmds == 1) {
         char **args = cmds[0];
-        if (!args || !args[0]) return 0;
-        if (strcmp(args[0], "cd") == 0)
+        if (!args || !args[0]) {
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            return 0;
+        }
+        if (strcmp(args[0], "cd") == 0) {
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
             return handle_cd(args);
+        }
 
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
             return 1;
         }
 
         if (pid == 0) {
-            // CHILD: put self in new group, restore signals, exec
-            // Only set PGID; DO NOT tcsetpgrp here.
             setpgid(0, 0);
             setup_child_signals();
             exec_child(args);
+            _exit(127);
         }
 
-        // PARENT: establish job control
         pgid = pid;
-        // Ensure child is the group leader; race-proof by retrying if needed
-        if (setpgid(pid, pgid) < 0 && errno != EACCES && errno != EINVAL) {
-            // EACCES can happen if child already exec’d and set it; ignore benign failures.
-            // EINVAL can occur transiently; you could retry, but usually safe to continue.
+        shell->pipeline_pgid = pgid;
+
+        if (setpgid(pid, pgid) < 0 &&
+            errno != EACCES && errno != EINVAL && errno != EPERM) {
+            // ignore benign races
         }
 
         give_terminal_to_pgid(shell, pgid);
+        //sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
-        // Wait for child to exit or stop
         if (waitpid(-pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
             perror("waitpid");
         }
 
         if (WIFSTOPPED(status)) {
             reclaim_terminal(shell);
-            shell->last_pgid = pgid; // remember stopped job’s PGID for fg/bg
-            fprintf(stderr, "\n[Stopped]\n");
+            shell->last_pgid = pgid;
+            shell->pipeline_pgid = 0;
             return 128 + WSTOPSIG(status);
         }
 
-        if (WIFEXITED(status))      last_exit = WEXITSTATUS(status);
+        if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
         else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
 
         reclaim_terminal(shell);
+        shell->pipeline_pgid = 0;
         return last_exit;
     }
 
-    // ----- Multi-stage pipeline -----
-    int pipes[num_cmds - 1][2];
-    pid_t pids[num_cmds];
+    pid_t *pids = calloc(num_cmds, sizeof(pid_t));
+    if (!pids) {
+        perror("calloc pids");
+        //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+        shell->pipeline_pgid = 0;
+        return 1;
+    }
 
-    // 1) Create pipes
-    for (i = 0; i < num_cmds - 1; ++i) {
-        if (pipe(pipes[i]) < 0) {
-            perror("pipe");
+    int (*pipes)[2] = NULL;
+    if (num_cmds > 1) {
+        pipes = calloc(num_cmds - 1, sizeof(int[2]));
+        if (!pipes) {
+            perror("calloc pipes");
+            free(pids);
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            shell->pipeline_pgid = 0;
             return 1;
         }
     }
 
-    // 2) Fork each stage
+    // Create pipes with CLOEXEC for safety
+    for (i = 0; i < num_cmds - 1; ++i) {
+    #ifdef HAVE_PIPE2
+        if (pipe2(pipes[i], O_CLOEXEC) < 0)
+    #else
+        if (pipe(pipes[i]) < 0)
+    #endif
+        {
+            perror("pipe");
+            for (int j = 0; j < i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            free(pids);
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            shell->pipeline_pgid = 0;
+            return 1;
+        }
+    #ifndef HAVE_PIPE2
+        fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC);
+        fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC);
+    #endif
+    }
+
+    pid_t last_pid = -1;
+    int final_status = 0, got_last = 0;
+
     for (i = 0; i < num_cmds; ++i) {
         pids[i] = fork();
         if (pids[i] < 0) {
             perror("fork");
+            if (pipes) {
+                for (int j = 0; j < num_cmds - 1; ++j) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+                free(pipes);
+            }
+            free(pids);
+            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            shell->pipeline_pgid = 0;
             return 1;
         }
 
         if (pids[i] == 0) {
-            // CHILD
-            // a) Process group: first child becomes leader, others do not touch tcsetpgrp
             if (i == 0) {
-                setpgid(0, 0); // self as leader
+                setpgid(0, 0);
             } else {
-                // Do not rely on a non-shared pgid variable; parent will set our PGID.
-                // Optionally call setpgid(0, getppid()) is wrong; just skip.
+                pid_t target = shell->pipeline_pgid;
+                if (target > 0 &&
+                    setpgid(0, target) < 0 &&
+                    errno != EACCES && errno != EINVAL && errno != EPERM) {
+                    // ignore benign races
+                }
             }
 
-            // b) Wire pipes
-            if (i > 0)                  dup2(pipes[i - 1][0], STDIN_FILENO);
-            if (i < num_cmds - 1)       dup2(pipes[i][1],     STDOUT_FILENO);
-
-            // c) Close all fds
-            for (int j = 0; j < num_cmds - 1; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+            // Wire pipes with error checks
+            if (i > 0) {
+                if (dup2(pipes[i - 1][0], STDIN_FILENO) < 0) _exit(127);
+            }
+            if (i < num_cmds - 1) {
+                if (dup2(pipes[i][1], STDOUT_FILENO) < 0) _exit(127);
             }
 
-            // d) Restore default signals and exec
+            if (pipes) {
+                for (int j = 0; j < num_cmds - 1; ++j) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+            }
+
             setup_child_signals();
             exec_child(cmds[i]);
+            _exit(127);
         } else {
-            // PARENT
             if (i == 0) {
                 pgid = pids[0];
+                shell->pipeline_pgid = pgid;
+
                 for (int attempt = 0; attempt < 5; ++attempt) {
-                     if (setpgid(pids[0], pgid) == 0) break;
-                     if (errno == EACCES || errno == EINVAL) break;
-                     usleep(1000); // small delay to let child setpgid itself
-                     }
-                     give_terminal_to_pgid(shell, pgid);
+                    if (setpgid(pids[0], pgid) == 0) break;
+                    if (errno == EACCES || errno == EINVAL || errno == EPERM) break;
+                    usleep(5000);
+                }
+                give_terminal_to_pgid(shell, pgid);
             } else {
-                if (setpgid(pids[i], pgid) < 0 && errno != EACCES && errno != EINVAL) {
-                    // ignore benign races
+                for (int attempt = 0; attempt < 5; ++attempt) {
+                    if (setpgid(pids[i], pgid) == 0) break;
+                    if (errno == EACCES || errno == EINVAL || errno == EPERM) break;
+                    usleep(5000);
                 }
             }
         }
     }
 
-    // 3) Parent closes all pipe fds
-    for (i = 0; i < num_cmds - 1; ++i) {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
+    last_pid = pids[num_cmds - 1];
+
+    if (pipes) {
+        for (i = 0; i < num_cmds - 1; ++i) {
+            close(pipes[i][0]);
+            close(pipes[i][1]);
+        }
     }
 
-    // 4) Wait until the entire pipeline exits or any process stops
+    // Restore signal mask before waiting
+    //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+
     int live = num_cmds;
     while (live > 0) {
         pid_t w = waitpid(-pgid, &status, WUNTRACED);
@@ -444,18 +525,47 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         if (WIFSTOPPED(status)) {
             reclaim_terminal(shell);
             shell->last_pgid = pgid;
-            fprintf(stderr, "\n[Pipeline stopped]\n");
+            shell->pipeline_pgid = 0;
+            if (pipes) free(pipes);
+            free(pids);
             return 128 + WSTOPSIG(status);
         }
+
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             --live;
-            if (WIFEXITED(status))      last_exit = WEXITSTATUS(status);
+            if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
             else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
+
+            if (w == last_pid) {
+                final_status = status;
+                got_last = 1;
+            }
         }
     }
 
-    // 5) Reclaim terminal and store last pgid
     reclaim_terminal(shell);
     shell->last_pgid = pgid;
-    return last_exit;
+
+    int ret;
+    if (got_last) {
+        if (WIFEXITED(final_status))        ret = WEXITSTATUS(final_status);
+        else if (WIFSIGNALED(final_status)) ret = 128 + WTERMSIG(final_status);
+        else                                ret = last_exit;
+    } else {
+        int tmp;
+        pid_t r = waitpid(last_pid, &tmp, WNOHANG);
+        if (r == last_pid) {
+            if (WIFEXITED(tmp))        ret = WEXITSTATUS(tmp);
+            else if (WIFSIGNALED(tmp)) ret = 128 + WTERMSIG(tmp);
+            else                       ret = last_exit;
+        } else {
+            ret = last_exit;
+        }
+    }
+
+    if (pipes) free(pipes);
+    free(pids);
+    shell->pipeline_pgid = 0; // reset shared handoff
+    return ret;
 }
+
