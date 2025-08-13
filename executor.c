@@ -114,8 +114,10 @@ char *expand_variables(const char *input, int last_exit) {
     size_t exit_len = strlen(exit_str);
 
     // Estimate worst-case size: every char is "$?" → 8x growth
-    size_t max_len = strlen(input) * 4 + 1;
-    char *result = malloc(max_len);
+    size_t input_len = strlen(input);
+    size_t max_len = input_len + 32;  // generous buffer for replacements
+
+    char *result = calloc(1, max_len);
     if (!result) return NULL;
 
     const char *src = input;
