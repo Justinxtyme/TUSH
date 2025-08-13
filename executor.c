@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>  
 
 #define MAX_CMDS 16
 #define MAX_ARGS 64
