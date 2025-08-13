@@ -57,7 +57,6 @@ int main() {
         LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
 
         char ***cmds = parse_pipeline(expanded, &num_cmds);
-        free(expanded);
 
 
         if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
@@ -83,6 +82,8 @@ int main() {
         }
 
             // 4) free cmds…
+
+            free(expanded);
     }
     cleanup_readline();
     return 0;
