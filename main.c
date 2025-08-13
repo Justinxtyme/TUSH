@@ -54,7 +54,7 @@ int main() {
             perror("expand_variables");
             continue;
         }
-        LOG(LOG_LEVEL_DEBUG, "Expanded input: '%s'", expanded);
+        LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
 
         char ***cmds = parse_pipeline(expanded, &num_cmds);
         free(expanded);
