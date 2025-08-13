@@ -498,8 +498,8 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     
     pid_t last_pid = -1;
     int final_status = 0, got_last = 0;
-    LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
-    LOG(LOG_LEVEL_INFO, "num_cmds = %d", num_cmds);
+    //LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
+    //LOG(LOG_LEVEL_INFO, "num_cmds = %d", num_cmds);
 
     
     for (i = 0; i < num_cmds; ++i) { 
