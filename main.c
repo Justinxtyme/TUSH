@@ -57,13 +57,14 @@ int main() {
         LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
 
         char ***cmds = parse_pipeline(expanded, &num_cmds);
+        LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
 
 
         if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
 
-        if (strcmp(cmds[0][0], "exit") == 0) {
-            shell.running = 0;
-        } else {
+        //if (strcmp(cmds[0][0], "exit") == 0) {
+           // shell.running = 0;
+      //  } else {
             int status = launch_pipeline(&shell, cmds, num_cmds);;
 
 
