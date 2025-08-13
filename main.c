@@ -48,7 +48,16 @@ int main() {
         add_to_history(&shell, shell.input); // adds input to history, for reuse
 
         int num_cmds = 0;
-        char ***cmds = parse_pipeline(shell.input, &num_cmds);
+        // Expand variables like $?
+        char *expanded = expand_variables(shell.input, shell.last_status);
+        if (!expanded) {
+            perror("expand_variables");
+            continue;
+        }
+        char ***cmds = parse_pipeline(expanded, &num_cmds);
+        free(expanded);
+
+
         if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
 
         if (strcmp(cmds[0][0], "exit") == 0) {

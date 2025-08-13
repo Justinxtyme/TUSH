@@ -28,4 +28,7 @@ bool is_executable(const char *path);
 
 void print_exec_error(const char *what, int err);
 
+char *expand_variables(const char *input, int last_exit);
+
+
 #endif  // EXECUTOR_H

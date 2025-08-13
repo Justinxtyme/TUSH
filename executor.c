@@ -104,6 +104,36 @@ static pipe_pair_t *create_pipes(int num_cmds) {
     return pipes;
 }
 
+char *expand_variables(const char *input, int last_exit) {
+    const char *needle = "$?";
+    size_t needle_len = 2;
+
+    // Convert last_exit to string
+    char exit_str[16];
+    snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
+    size_t exit_len = strlen(exit_str);
+
+    // Estimate worst-case size: every char is "$?" → 8x growth
+    size_t max_len = strlen(input) * 4 + 1;
+    char *result = malloc(max_len);
+    if (!result) return NULL;
+
+    const char *src = input;
+    char *dst = result;
+
+    while (*src) {
+        if (strncmp(src, needle, needle_len) == 0) {
+            memcpy(dst, exit_str, exit_len);
+            dst += exit_len;
+            src += needle_len;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+
+    *dst = '\0';
+    return result;
+}
 
 extern char **environ;  // Environment passed to execve
 
