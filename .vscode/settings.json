@@ -61,7 +61,9 @@
     "input.h": "c",
     "builtins.h": "c",
     "errno.h": "c",
-    "unistd.h": "c"
+    "unistd.h": "c",
+    "stdio.h": "c",
+    "string.h": "c"
   },
   "makefile.configureOnOpen": true,
   "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"

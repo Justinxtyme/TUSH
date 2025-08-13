@@ -6,5 +6,7 @@
 int read_input(ShellContext *ctx); // replaces fgets-based version
 void initialize_readline(void);
 void cleanup_readline(void);
+bool is_numeric(const char *s);
+bool handle_literal_expansion(ShellContext *shell, const char *expanded);
 
 #endif

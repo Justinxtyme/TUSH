@@ -9,6 +9,7 @@
 #include <readline/readline.h> 
 #include <readline/history.h> 
 #include "input.h" // 
+#include "executor.h"
 #include <unistd.h> // for getcwd
 #include "debug.h"
 
