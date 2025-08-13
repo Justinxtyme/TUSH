@@ -2,6 +2,7 @@
 #define INPUT_H
 
 #include "shell.h" // for ShellContext
+#include <stdbool.h>
 
 int read_input(ShellContext *ctx); // replaces fgets-based version
 void initialize_readline(void);
