@@ -62,9 +62,9 @@ int main() {
 
         if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
 
-        //if (strcmp(cmds[0][0], "exit") == 0) {
-           // shell.running = 0;
-      //  } else {
+        if (strcmp(cmds[0][0], "exit") == 0) {
+            shell.running = 0;
+        } else {
             int status = launch_pipeline(&shell, cmds, num_cmds);;
 
 
