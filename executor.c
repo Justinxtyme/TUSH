@@ -500,8 +500,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int final_status = 0, got_last = 0;
     LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
     LOG(LOG_LEVEL_INFO, "num_cmds = %d", num_cmds);
-    printf("num_cmds = %d", num_cmds);
-    printf("cmds[%d][0] = '%s'", i, cmds[i][0]);
+
     
     for (i = 0; i < num_cmds; ++i) { 
         if (is_builtin(cmds[i][0])) {
@@ -528,6 +527,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             perror("fork");   
             if (pipes) {
                 for (int j = 0; j < num_cmds - 1; ++j) {
+                    LOG(LOG_LEVEL_INFO, "cmds[%d][%d] = '%s'", i, j, cmds[i][j]);
                     close(pipes[j][0]);
                     close(pipes[j][1]);
                 }
