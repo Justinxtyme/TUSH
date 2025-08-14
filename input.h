@@ -9,5 +9,6 @@ void initialize_readline(void);
 void cleanup_readline(void);
 bool is_numeric(const char *s);
 bool handle_literal_expansion(ShellContext *shell, const char *expanded);
+char **split_on_semicolons(const char *input);
 
 #endif

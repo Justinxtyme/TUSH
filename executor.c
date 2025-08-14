@@ -662,6 +662,13 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
 }
 
 
+void free_segments(char **segments) {
+    if (!segments) return;
+    for (int i = 0; segments[i]; ++i) {
+        free(segments[i]);
+    }
+    free(segments);
+}
 /*=================================process_input_segments=====================================
 processes expanded input, splitting at semicolons for */
 void process_input_segments(ShellContext *shell, const char *expanded_input) {
