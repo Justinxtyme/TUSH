@@ -83,7 +83,7 @@ int main(void) {
     if (!(r4.id == 0)) {
         fprintf(stderr, "FAIL: r4.id expected == 0 (duplicate ignored), got %d\n", r4.id);
     }
-    assert(r4.id != 0);
+    assert(r4.id == 0);
 
     if (!(history_count(&h) == 3)) {
         fprintf(stderr, "FAIL: expected history_count == 2, got %zu\n", history_count(&h));
