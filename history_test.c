@@ -105,6 +105,15 @@ int main(void) {
     }
     assert(e1 && strcmp(e1->line, "pwd") == 0);
 
+    printf("\n=== IGNORESPACE ===\n");
+    size_t before = history_count(&h);
+    HistoryAddResult rs = history_add(&h, "  ls -l"); // leading spaces
+    print_add_result("rs (leading-space)", rs);
+    assert(rs.id == 0);                  // should be ignored
+    assert(history_count(&h) == before); // count unchanged
+
+
+
     history_dispose(&h);
     unlink(test_path);
 
