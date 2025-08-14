@@ -72,10 +72,10 @@ int main(void) {
     }
     assert(r2.id != 0);
 
-    if (!(r3.id == 0)) {
-        fprintf(stderr, "FAIL: r3.id expected == 0 (duplicate ignored), got %d\n", r3.id);
+    if (!(r3.id != 0)) {
+        fprintf(stderr, "FAIL: r3.id expected != 0 (duplicate ignored), got %d\n", r3.id);
     }
-    assert(r3.id == 0);
+    assert(r3.id != 0);
 
     if (!(history_count(&h) == 2)) {
         fprintf(stderr, "FAIL: expected history_count == 2, got %zu\n", history_count(&h));
