@@ -181,23 +181,25 @@ int history_stifle(History *h, size_t max_entries) {
 static int should_ignore(const History *h, const char *line) {
     if (!line) return 1;
     if ((h->flags & HISTORY_IGNORE_EMPTY) && is_blank(line)) return 1;
-    if ((h->flags & HISTORY_IGNORE_SPACE) && line[0] == ' ') return 1;
+
+    if ((h->flags & HISTORY_IGNORE_SPACE) && line[0] == ' ') {
+        fprintf(stderr, "[ignorespace] len=%zu new=\"%s\"\n",
+                h->len, line ? line : "<null>");
+        return 1;
+    }
+
     if (h->flags & HISTORY_TRIM_TRAILING) {
         // we'll trim in a copy later; decision not based on trailing spaces alone
     }
+
     if (h->flags & HISTORY_IGNORE_DUPS) {
-        // Added: show we're in the dup check, with current line
         fprintf(stderr, "[dupchk] len=%zu new=\"%s\"\n",
                 h->len, line ? line : "<null>");
-
         if (h->len) {
             const char *prev = h->v[h->len - 1].line;
-
-            // Added: print just before strcmp
             fprintf(stderr, "[dupchk] prev=\"%s\" new=\"%s\"\n",
                     prev ? prev : "<null>",
                     line ? line : "<null>");
-
             if (prev && strcmp(prev, line) == 0) return 1;
         }
     }
