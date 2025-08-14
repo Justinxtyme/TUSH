@@ -35,6 +35,7 @@
 #include "debug.h"
 #include "signals.h"
 #include "shell.h"
+#include "jobs.h"
 #include "input.h"
 #include <errno.h>
 #include <termios.h>    
