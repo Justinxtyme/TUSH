@@ -77,4 +77,54 @@ bool handle_literal_expansion(ShellContext *shell, const char *expanded) {
     return true;
 }
 
+char **split_on_semicolons(const char *input) {
+    if (!input) return NULL; // Defensive: null input yields null output
 
+    size_t len = strlen(input);
+
+    // Make a modifiable copy of the input string
+    // We'll overwrite semicolons with '\0' to split in-place
+    char *copy = strdup(input);
+    if (!copy) return NULL; // Allocation failed
+
+    // Allocate space for output segments
+    // Worst case: every character is a segment (overkill, but safe)
+    char **segments = calloc(len + 1, sizeof(char *));
+    if (!segments) {
+        free(copy);
+        return NULL;
+    }
+
+    int seg_count = 0;       // Number of segments found
+    char *start = copy;      // Start of current segment
+    char *p = copy;          // Current scanning pointer
+    char quote = '\0';       // Tracks whether we're inside quotes
+
+    while (*p) {
+        // Handle quote tracking
+        if (*p == '\'' || *p == '"') {
+            if (quote == '\0') {
+                quote = *p; // Entering quoted region
+            } else if (quote == *p) {
+                quote = '\0'; // Exiting quoted region
+            }
+        }
+        // If we hit a semicolon outside quotes, it's a split point
+        else if (*p == ';' && quote == '\0') {
+            *p = '\0'; // Null-terminate current segment
+            segments[seg_count++] = strdup(start); // Copy segment
+            start = p + 1; // Move start to next character
+        }
+        ++p;
+    }
+
+    // Add final segment (if any)
+    if (*start) {
+        segments[seg_count++] = strdup(start);
+    }
+
+    segments[seg_count] = NULL; // Null-terminate the array
+
+    free(copy); // Free the temporary buffer
+    return segments;
+}

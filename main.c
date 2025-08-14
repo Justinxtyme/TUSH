@@ -47,7 +47,7 @@ int main() {
 
         add_to_history(&shell, shell.input); // adds input to history, for reuse
 
-        int num_cmds = 0;
+        //int num_cmds = 0;
         // Expand variables like $?
         char *expanded = expand_variables(shell.input, shell.last_status);
         if (!expanded) {
@@ -56,38 +56,10 @@ int main() {
         }
         LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
 
+        process_input_segments(&shell, expanded);
 
+        free(expanded);
 
-        char ***cmds = parse_pipeline(expanded, &num_cmds);
-        LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
-
-
-        if (num_cmds == 0 || cmds == NULL || cmds[0] == NULL) continue;
-
-        if (cmds && cmds[0] && cmds[0][0] && strcmp(cmds[0][0], "exit") == 0) {
-            shell.running = 0;
-
-        } else {
-            int status = launch_pipeline(&shell, cmds, num_cmds);;
-
-
-
-            // 1) Save for “$?” 
-            shell.last_status = status;
-
-            // 2) If stopped, add to jobs
-            if (status == 128 + SIGTSTP) {
-            add_job(shell.last_pgid, shell.input);
-            fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id()-1, shell.input);
-            }
-
-            // 3) Maybe log it
-            LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
-        }
-
-            // 4) free cmds…
-
-            free(expanded);
     }
     cleanup_readline();
     return 0;

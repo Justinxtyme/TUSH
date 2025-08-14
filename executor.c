@@ -143,8 +143,6 @@ char *expand_variables(const char *input, int last_exit) {
 }
 extern char **environ;  // Environment passed to execve
 
-// Program prefix for error messages. Consider wiring this to your prompt name.
-static const char *progname = "tush"; //
 
 /*
  * has_slash
@@ -265,6 +263,7 @@ enum path_lookup {
     if (found_dir)    return FOUND_DIR;
     return NOT_FOUND;
 }
+
 /*
  * print_exec_error
  * Map common errno values from a failed execve to user-friendly, shell-like errors.
@@ -662,3 +661,47 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     return ret;
 }
 
+
+/*=================================process_input_segments=====================================
+processes expanded input, splitting at semicolons for */
+void process_input_segments(ShellContext *shell, const char *expanded_input) {
+    char **segments = split_on_semicolons(expanded_input);
+    if (!segments) return;
+
+    for (int i = 0; segments[i]; ++i) {
+        int num_cmds = 0;
+        char ***cmds = parse_pipeline(segments[i], &num_cmds);
+        LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
+
+        if (num_cmds == 0 || !cmds || !cmds[0]) continue;
+
+        if (cmds[0][0] && strcmp(cmds[0][0], "exit") == 0) {
+            shell->running = 0;
+            break;
+        }
+        LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);    
+        
+        int status = launch_pipeline(shell, cmds, num_cmds);
+        shell->last_status = status;
+        LOG(LOG_LEVEL_INFO, "Segment %d exited with status %d", i, status);
+        if (status == 128 + SIGTSTP) {
+            add_job(shell->last_pgid, segments[i]);
+            fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id()-1, segments[i]);
+        }
+
+        LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
+
+        // Free cmds...
+        for (int j = 0; j < num_cmds; ++j) {
+            free(cmds[j]); // each command (char **)
+        }
+        free(cmds); // outer array (char ***)
+    }
+
+    free_segments(segments);
+}
+
+
+
+// Program prefix for error messages. Consider wiring this to your prompt name.
+static const char *progname = "tush"; //
