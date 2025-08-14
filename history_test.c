@@ -56,8 +56,11 @@ int main(void) {
     HistoryAddResult r2 = history_add(&h, "pwd");
     print_add_result("r2 (pwd)", r2);
 
-    HistoryAddResult r3 = history_add(&h, "echo hello"); // duplicate
+    HistoryAddResult r3 = history_add(&h, "echo hello"); 
     print_add_result("r3 (echo hello dup)", r3);
+
+    HistoryAddResult r4 = history_add(&h, "echo hello"); // duplicate
+    print_add_result("r4 (echo hello dup)", r4);
 
     print_history_state(&h, "after adds");
 
@@ -76,6 +79,11 @@ int main(void) {
         fprintf(stderr, "FAIL: r3.id expected != 0 (duplicate ignored), got %d\n", r3.id);
     }
     assert(r3.id != 0);
+
+    if (!(r4.id == 0)) {
+        fprintf(stderr, "FAIL: r4.id expected == 0 (duplicate ignored), got %d\n", r4.id);
+    }
+    assert(r4.id != 0);
 
     if (!(history_count(&h) == 3)) {
         fprintf(stderr, "FAIL: expected history_count == 2, got %zu\n", history_count(&h));
