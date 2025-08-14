@@ -86,7 +86,8 @@ int main(void) {
     assert(history_save(&h) == 0);
     history_dispose(&h);
 
-    assert(history_init(&h, test_path, 10, 0) == 0);
+    assert(history_init(&h, test_path, 10,
+       HISTORY_IGNORE_EMPTY | HISTORY_IGNORE_DUPS | HISTORY_TRIM_TRAILING | HISTORY_IGNORE_SPACE) == 0);
     assert(history_load(&h) == 0);
     print_history_state(&h, "after reload");
 
