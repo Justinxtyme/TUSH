@@ -56,6 +56,7 @@
 
 //#define bool _Bool
 
+// Program prefix for error messages. Consider wiring this to your prompt name.
 static const char *progname = "tush"; //
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
@@ -299,28 +300,38 @@ enum path_lookup {
 /* parse_pipeline - Split input into separate commands for a pipeline
    it returns an array of command arguments (argv)
    while also updating the num_cmds variable to reflect the number of commands found.*/
-char ***parse_pipeline(char *input, int *num_cmds) {
-    static char **cmds[MAX_CMDS];  // array of command argv[]
-    static char *args[MAX_CMDS][MAX_ARGS];  // storage for each argv[]
+char ***parse_pipeline(const char *input, int *num_cmds) {
+    char *copy = strdup(input);
+    if (!copy) return NULL;
+
+    char ***cmds = calloc(MAX_CMDS, sizeof(char **));
+    if (!cmds) {
+        free(copy);
+        return NULL;
+    }
+
     int cmd_index = 0;
     int arg_index = 0;
+    char *token = strtok(copy, " ");
+    char **argv = calloc(MAX_ARGS, sizeof(char *));
 
-    char *token = strtok(input, " ");
-    while (token != NULL) {
+    while (token) {
         if (strcmp(token, "|") == 0) {
-            args[cmd_index][arg_index] = NULL;  // terminate argv
-            cmds[cmd_index] = args[cmd_index];  // store argv
-            cmd_index++;
+            argv[arg_index] = NULL;
+            cmds[cmd_index++] = argv;
+            argv = calloc(MAX_ARGS, sizeof(char *));
             arg_index = 0;
         } else {
-            args[cmd_index][arg_index++] = token;
+            argv[arg_index++] = strdup(token);
         }
         token = strtok(NULL, " ");
     }
 
-    args[cmd_index][arg_index] = NULL;
-    cmds[cmd_index] = args[cmd_index];
-    *num_cmds = cmd_index + 1;
+    argv[arg_index] = NULL;
+    cmds[cmd_index++] = argv;
+    *num_cmds = cmd_index;
+
+    free(copy);
     return cmds;
 }
 
@@ -703,9 +714,12 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
 
         // Free cmds...
         for (int j = 0; j < num_cmds; ++j) {
-            free(cmds[j]); // each command (char **)
+            for (int k = 0; cmds[j][k]; ++k) {
+                free(cmds[j][k]);
+            }
+            free(cmds[j]);
         }
-        free(cmds); // outer array (char ***)
+        free(cmds);
     }
 
     free_segments(segments);
