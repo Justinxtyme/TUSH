@@ -4,6 +4,7 @@
  It is used to manage the shell's state, user input, and command history */
 
 #include <sys/types.h>
+#include "history.h"
  #ifndef SHELL_H
 #define SHELL_H
 
@@ -18,9 +19,7 @@ typedef struct {
     pid_t last_pgid;    // new field
     pid_t pipeline_pgid;
     char cwd[512];            // Current working directory
-    char **history;         // Array of command strings
-    int history_size;       // Number of stored commands
-    int history_capacity;   // Allocated slots    
+    History history;    
     // Add more fields as needed: history, env vars, etc.
 } ShellContext;
 
