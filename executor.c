@@ -55,6 +55,7 @@
 
 //#define bool _Bool
 
+static const char *progname = "tush"; //
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
 typedef int pipe_pair_t[2];
@@ -712,4 +713,3 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
 
 
 // Program prefix for error messages. Consider wiring this to your prompt name.
-static const char *progname = "tush"; //
