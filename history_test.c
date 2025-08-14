@@ -77,10 +77,10 @@ int main(void) {
     }
     assert(r3.id != 0);
 
-    if (!(history_count(&h) == 2)) {
+    if (!(history_count(&h) == 3)) {
         fprintf(stderr, "FAIL: expected history_count == 2, got %zu\n", history_count(&h));
     }
-    assert(history_count(&h) == 2);
+    assert(history_count(&h) == 3);
 
     printf("\n=== SAVE & RELOAD ===\n");
     assert(history_save(&h) == 0);
@@ -90,10 +90,11 @@ int main(void) {
     assert(history_load(&h) == 0);
     print_history_state(&h, "after reload");
 
-    assert(history_count(&h) == 2);
+    assert(history_count(&h) == 3);
 
     const HistEntry *e0 = get_history(&h, 0);
     const HistEntry *e1 = get_history(&h, 1);
+    const HistEntry *e2 = get_history(&h, 2);
 
     if (!(e0 && strcmp(e0->line, "echo hello") == 0)) {
         fprintf(stderr, "FAIL: entry[0] expected \"echo hello\"\n");
@@ -104,6 +105,11 @@ int main(void) {
         fprintf(stderr, "FAIL: entry[1] expected \"pwd\"\n");
     }
     assert(e1 && strcmp(e1->line, "pwd") == 0);
+    
+    if (!(e2 && strcmp(e2->line, "echo hello") == 0)) {
+        fprintf(stderr, "FAIL: entry[2] expected \"echo hello\"\n");
+    }
+    assert(e2 && strcmp(e2->line, "echo hello") == 0);
 
     printf("\n=== IGNORESPACE ===\n");
     size_t before = history_count(&h);
