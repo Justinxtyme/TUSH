@@ -12,7 +12,7 @@
 #define EXECUTOR_H
 
 //int run_command(char **args);
-char ***parse_pipeline(char *input, int *num_cmds);
+char ***parse_pipeline(const char *input, int *num_cmds);
 
 int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds);
 
