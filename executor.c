@@ -300,7 +300,7 @@ enum path_lookup {
 /* parse_pipeline - Split input into separate commands for a pipeline
    it returns an array of command arguments (argv)
    while also updating the num_cmds variable to reflect the number of commands found.*/
-char ***parse_pipeline(const char *input, int *num_cmds) {
+/*char ***parse_pipeline(const char *input, int *num_cmds) {
     char *copy = strdup(input);
     if (!copy) return NULL;
 
@@ -332,6 +332,71 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
     *num_cmds = cmd_index;
 
     free(copy);
+    return cmds;
+}*/
+
+char ***parse_pipeline(const char *input, int *num_cmds) {
+    char ***cmds = calloc(MAX_CMDS, sizeof(char **));
+    if (!cmds) return NULL;
+
+    int cmd_index = 0;
+    int arg_index = 0;
+    char **argv = calloc(MAX_ARGS, sizeof(char *));
+    if (!argv) {
+        free(cmds);
+        return NULL;
+    }
+
+    const char *p = input;
+    char token_buf[1024];
+    int buf_index = 0;
+    bool in_single = false, in_double = false;
+
+    while (*p) {
+        char c = *p;
+
+        if (c == '\\' && p[1]) {
+            token_buf[buf_index++] = p[1];
+            p += 2;
+        } else if (c == '\'' && !in_double) {
+            in_single = !in_single;
+            p++;
+        } else if (c == '"' && !in_single) {
+            in_double = !in_double;
+            p++;
+        } else if (c == '|' && !in_single && !in_double) {
+            if (buf_index > 0) {
+                token_buf[buf_index] = '\0';
+                argv[arg_index++] = strdup(token_buf);
+                buf_index = 0;
+            }
+            argv[arg_index] = NULL;
+            cmds[cmd_index++] = argv;
+            argv = calloc(MAX_ARGS, sizeof(char *));
+            arg_index = 0;
+            p++;
+        } else if (isspace(c) && !in_single && !in_double) {
+            if (buf_index > 0) {
+                token_buf[buf_index] = '\0';
+                argv[arg_index++] = strdup(token_buf);
+                buf_index = 0;
+            }
+            p++;
+        } else {
+            token_buf[buf_index++] = c;
+            p++;
+        }
+    }
+
+    if (buf_index > 0) {
+        token_buf[buf_index] = '\0';
+        argv[arg_index++] = strdup(token_buf);
+    }
+
+    argv[arg_index] = NULL;
+    cmds[cmd_index++] = argv;
+    *num_cmds = cmd_index;
+
     return cmds;
 }
 
