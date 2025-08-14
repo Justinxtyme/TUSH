@@ -37,7 +37,7 @@ int read_input(ShellContext *ctx) {
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
 
-    if (*line) add_history(line); // non-empty input gets saved
+    //if (*line) add_history(line); // non-empty input gets saved
 
     strncpy(ctx->input, line, sizeof(ctx->input) - 1);
     ctx->input[sizeof(ctx->input) - 1] = '\0'; // ensure null-termination
