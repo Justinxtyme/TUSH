@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
+//#include <readline/history.h>
 
 #pragma region small_helpers
 static char *xstrdup(const char *s) {
