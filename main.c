@@ -30,7 +30,7 @@
 // --- Main Loop ---
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
-    init_shell(&shell); // Initialize the shell context
+    //init_shell(&shell); // Initialize the shell context
     setup_parent_signals();
     setup_shell_job_control(&shell);
     initialize_readline();
