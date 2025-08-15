@@ -60,46 +60,6 @@
 // Program prefix for error messages. Consider wiring this to your prompt name.
 static const char *progname = "tush"; //
 
-    int count = num_cmds - 1;
-    if (count <= 0) {
-        return NULL;
-    }
-
-    pipe_pair_t *pipes = calloc(count, sizeof(pipe_pair_t));
-    if (!pipes) {
-        return NULL;
-    }
-
-    for (int i = 0; i < count; ++i) {
-#if defined(HAVE_PIPE2)
-        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
-#else
-        if (pipe(pipes[i]) < 0) {
-#endif
-            // tear down what we built so far
-            for (int j = 0; j < i; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
-            }
-            free(pipes);
-            return NULL;
-        }
-#ifndef HAVE_PIPE2
-        if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
-            fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
-            for (int j = 0; j <= i; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
-            }
-            free(pipes);
-            return NULL;
-        }
-#endif
-    }
-
-    return pipes;
-}
-
 char *expand_variables(const char *input, int last_exit) {
     if (!input) return NULL;
 
@@ -136,6 +96,7 @@ char *expand_variables(const char *input, int last_exit) {
     *dst = '\0';
     return result;
 }
+
 extern char **environ;  // Environment passed to execve
 
 
