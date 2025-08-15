@@ -1,5 +1,5 @@
 /* =========================================== executor.c ======================================================
- TUSH command execution and pipeline orchestration with Bash-like semantics.
+ thrash command execution and pipeline orchestration with Bash-like semantics.
 
  Responsibilities:
  - Builtins (e.g., cd) handled directly and returned without forking.
@@ -58,7 +58,7 @@
 //#define bool _Bool
 
 // Program prefix for error messages. Consider wiring this to your prompt name.
-static const char *progname = "tush"; //
+static const char *progname = "thrash"; //
 
 char *expand_variables(const char *input, int last_exit) {
     if (!input) return NULL;
@@ -419,15 +419,15 @@ static void exec_child(char **args) {
     } else {
         int r = search_path_alloc(args[0], &resolved);
         if (r == NOT_FOUND) {
-            fprintf(stderr, "tush: command not found: %s\n", args[0]);
+            fprintf(stderr, "thrash: command not found: %s\n", args[0]);
             _exit(127);
         }
         if (r == FOUND_DIR) {
-            fprintf(stderr, "tush: is a directory: %s\n", args[0]);
+            fprintf(stderr, "thrash: is a directory: %s\n", args[0]);
             _exit(126);
         }
         if (r == FOUND_NOEXEC) {
-            fprintf(stderr, "tush: permission denied: %s\n", args[0]);
+            fprintf(stderr, "thrash: permission denied: %s\n", args[0]);
             _exit(126);
         }
         path_to_exec = resolved;
@@ -435,11 +435,11 @@ static void exec_child(char **args) {
 
     // 2) Type & perm checks
     if (is_directory(path_to_exec)) {
-        fprintf(stderr, "tush: is a directory: %s\n", path_to_exec);
+        fprintf(stderr, "thrash: is a directory: %s\n", path_to_exec);
         _exit(126);
     }
     if (is_regular(path_to_exec) && !is_executable(path_to_exec)) {
-        fprintf(stderr, "tush: permission denied: %s\n", path_to_exec);
+        fprintf(stderr, "thrash: permission denied: %s\n", path_to_exec);
         _exit(126);
     }
 
@@ -450,17 +450,17 @@ static void exec_child(char **args) {
     execve(path_to_exec, args, environ);
     int err = errno;
     if (err == ENOEXEC) {
-        fprintf(stderr, "tush: exec format error: %s\n", path_to_exec);
+        fprintf(stderr, "thrash: exec format error: %s\n", path_to_exec);
         _exit(126);
     } else if (err == EACCES) {
-        fprintf(stderr, "tush: permission denied: %s\n", path_to_exec);
+        fprintf(stderr, "thrash: permission denied: %s\n", path_to_exec);
         _exit(126);
     } else if (err == ENOENT) {
         // Prefer the original argv[0] for 'not found'
-        fprintf(stderr, "tush: command not found: %s\n", args[0]);
+        fprintf(stderr, "thrash: command not found: %s\n", args[0]);
         _exit(127);
     } else {
-        fprintf(stderr, "tush: failed to exec %s: %s\n", path_to_exec, strerror(err));
+        fprintf(stderr, "thrash: failed to exec %s: %s\n", path_to_exec, strerror(err));
         _exit(126);
     }
 }
@@ -519,7 +519,7 @@ static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_
             return 2;
         } else {
             fprintf(stderr,
-                    "tush: builtin 'exit' cannot be used in a pipeline\n");
+                    "thrash: builtin 'exit' cannot be used in a pipeline\n");
             return 1;
         }
     }

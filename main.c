@@ -1,4 +1,4 @@
-/* this is an attempt to create a simple shell in C, called "TUSH", Totally Unnecessary Shell, Totally Useless Shell, or The Ultimate Shell.
+/* this is an attempt to create a simple shell in C, called "THRASH", Totally Unnecessary Shell, Totally Useless Shell, or The Ultimate Shell.
  it will support basic built-in commands like 'cd', 'exit', and 'ls'   
  and other posix commands */
 
@@ -60,7 +60,7 @@ int main() {
     //stifle_history((int)shell.history.max);
     
     // Log shell startup 
-    LOG(LOG_LEVEL_INFO, "TUSH started, pid=%d", getpid());
+    LOG(LOG_LEVEL_INFO, "THRASH started, pid=%d", getpid());
    
     while (shell.running) {
         //display_prompt(&shell); // Display the shell prompt

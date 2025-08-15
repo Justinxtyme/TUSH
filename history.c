@@ -35,7 +35,7 @@ const HistEntry* get_history(const History *h, size_t idx) {
     if (!h || idx >= h->len) return NULL;
     return &h->v[idx];
 }
-
+thrash
 static int ensure_cap(History *h, size_t need) {
     if (need <= h->cap) return 0;
     size_t new_cap = h->cap ? h->cap * 2 : 128;
@@ -251,18 +251,18 @@ int history_set_status_last(History *h, int status) {
     return 0;
 }
 
-// XDG: $XDG_STATE_HOME/tush/history or $HOME/.tush_history
+// XDG: $XDG_STATE_HOME/thrash/history or $HOME/.thrash_history
 int history_default_path(char *out, size_t out_sz) {
     if (!out || out_sz == 0) { errno = EINVAL; return -1; }
     const char *xdg = getenv("XDG_STATE_HOME");
     const char *home = getenv("HOME");
 #ifdef _WIN32
     const char *appdata = getenv("LOCALAPPDATA");
-    if (appdata && snprintf(out, out_sz, "%s\\tush\\history", appdata) < (int)out_sz) return 0;
-    if (home && snprintf(out, out_sz, "%s\\AppData\\Local\\tush\\history", home) < (int)out_sz) return 0;
+    if (appdata && snprintf(out, out_sz, "%s\\thrash\\history", appdata) < (int)out_sz) return 0;
+    if (home && snprintf(out, out_sz, "%s\\AppData\\Local\\thrash\\history", home) < (int)out_sz) return 0;
 #else
-    if (xdg && snprintf(out, out_sz, "%s/tush/history", xdg) < (int)out_sz) return 0;
-    if (home && snprintf(out, out_sz, "%s/.tush_history", home) < (int)out_sz) return 0;
+    if (xdg && snprintf(out, out_sz, "%s/thrash/history", xdg) < (int)out_sz) return 0;
+    if (home && snprintf(out, out_sz, "%s/.thrash_history", home) < (int)out_sz) return 0;
 #endif
     errno = ENOENT;
     return -1;
