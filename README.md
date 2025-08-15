@@ -1,2 +1,3 @@
-# TUSH
+# thrash
 A shell
+
