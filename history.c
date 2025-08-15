@@ -35,7 +35,7 @@ const HistEntry* get_history(const History *h, size_t idx) {
     if (!h || idx >= h->len) return NULL;
     return &h->v[idx];
 }
-thrash
+
 static int ensure_cap(History *h, size_t need) {
     if (need <= h->cap) return 0;
     size_t new_cap = h->cap ? h->cap * 2 : 128;
