@@ -60,16 +60,6 @@
 // Program prefix for error messages. Consider wiring this to your prompt name.
 static const char *progname = "tush"; //
 
-// A pipe consists of two fds: [0]=read end, [1]=write end.
-typedef int pipe_pair_t[2];
-/*
- * create_pipes
- * -------------
- * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
- * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
- * On failure closes any fds opened so far, frees the array, and returns NULL.
- */
-static pipe_pair_t *create_pipes(int num_cmds) {
     int count = num_cmds - 1;
     if (count <= 0) {
         return NULL;
@@ -401,6 +391,58 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
     return cmds;
 }
 
+
+// A pipe consists of two fds: [0]=read end, [1]=write end.
+typedef int pipe_pair_t[2];
+/*
+ * create_pipes
+ * -------------
+ * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
+ * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
+ * On failure closes any fds opened so far, frees the array, and returns NULL.
+ */
+static pipe_pair_t *create_pipes(int num_cmds) {
+    int count = num_cmds - 1;
+    if (count <= 0) {
+        return NULL;
+    }
+
+    pipe_pair_t *pipes = calloc(count, sizeof(pipe_pair_t));
+    if (!pipes) {
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+#if defined(HAVE_PIPE2)
+        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
+#else
+        if (pipe(pipes[i]) < 0) {
+#endif
+            // tear down what we built so far
+            for (int j = 0; j < i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#ifndef HAVE_PIPE2
+        if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
+            for (int j = 0; j <= i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#endif
+    }
+
+    return pipes;
+}
+
+
 //=====================================EXEC_CHILD================================================
 // used for executing child processes, including resolving paths and setting up the environment
 // args: command arguments, including argv[0] (the command to execute)  
@@ -476,7 +518,24 @@ static void reclaim_terminal(ShellContext *shell) {
     }
 }
 
+/* Close all pipe FDs in parent */
+static void close_pipes(pipe_pair_t *pipes, int num_cmds) {
+    if (!pipes) return;
+    for (int i = 0; i < num_cmds - 1; ++i) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+}
+
+/* Close and free */
+static void destroy_pipes(pipe_pair_t *pipes, int num_cmds) {
+    if (!pipes) return;
+    close_pipes(pipes, num_cmds);
+    free(pipes);
+}
+
 static void try_setpgid(pid_t pid, pid_t pgid) {
+    if (pid <= 0 || pgid <= 0) return;
     for (int attempt = 0; attempt < 5; ++attempt) {
         if (setpgid(pid, pgid) == 0) return;
         if (errno == EACCES || errno == EINVAL || errno == EPERM) return;
@@ -484,41 +543,79 @@ static void try_setpgid(pid_t pid, pid_t pgid) {
     }
 }
 
+static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_cmds) {                                      
+    if (!argv || !argv[0]) return 0;
 
-int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) { 
-    int i; // loop index
-    int status = 0, last_exit = 0; // process status and last exit code
-    pid_t pgid = 0; // process group ID for the pipeline
+    if (strcmp(argv[0], "cd") == 0) {
+        handle_cd(argv);
+        reclaim_terminal(shell);
+        shell->pipeline_pgid = 0;
+        return 1;
+    }
+    if (strcmp(argv[0], "exit") == 0) {
+        if (num_cmds == 1) {
+            shell->running = 0;
+            return 2;
+        } else {
+            fprintf(stderr,
+                    "tush: builtin 'exit' cannot be used in a pipeline\n");
+            return 1;
+        }
+    }
+    return 0;
+}
 
-    shell->pipeline_pgid = 0; // reset at start
+/* Child-side setup: PGID, dup2 pipes, close FDs, reset signals, exec. */
+static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) {
+    /* Process group: leader or join existing group */
+    if (leader_pgid == 0) {
+        setpgid(0, 0);
+    } else {
+        if (setpgid(0, leader_pgid) < 0 &&
+            errno != EACCES && errno != EINVAL && errno != EPERM)
+        {
+            /* ignore benign races; parent will retry */
+        }
+    }
 
-    // Defensive SIGCHLD block to prevent async reaper from stealing statuses
-    // Currently not needed — no SIGCHLD handler exists. Uncomment if you add
-    // background job monitoring or async waitpid() calls elsewhere.
-    /*
-    sigset_t block, oldmask;
-    sigemptyset(&block);
-    sigaddset(&block, SIGCHLD);
-    sigprocmask(SIG_BLOCK, &block, &oldmask);
-    // ... fork + setpgid sequence ...
-    sigprocmask(SIG_SETMASK, &oldmask, NULL);
-    */
-    if (num_cmds == 1) {    // Handle single command case
+    /* Wire up stdin/stdout */
+    if (idx > 0) {
+        if (dup2(pipes[idx - 1][0], STDIN_FILENO) < 0) _exit(127);
+    }
+    if (idx < num_cmds - 1) {
+        if (dup2(pipes[idx][1], STDOUT_FILENO) < 0) _exit(127);
+    }
+
+    /* Close all pipe FDs */
+    if (pipes) {
+        for (int j = 0; j < num_cmds - 1; ++j) {
+            close(pipes[j][0]);
+            close(pipes[j][1]);
+        }
+    }
+
+    /* Reset signals and exec */
+    setup_child_signals();
+    exec_child(cmd);
+    _exit(127);  /* defensive */
+}
+
+
+/* ================= Refactored launch_pipeline ================= */
+int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
+    int i, status = 0, last_exit = 0;
+    pid_t pgid = 0;
+    shell->pipeline_pgid = 0;
+
+    /* Single-command case */
+    if (num_cmds == 1) {
         char **args = cmds[0];
-        if (!args || !args[0]) {
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
-            return 0;
-        }
-        if (strcmp(args[0], "cd") == 0) {
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
-            return handle_cd(args);
-        }
+        if (!args || !args[0]) return 0;
+        if (strcmp(args[0], "cd") == 0) return handle_cd(args);
 
         pid_t pid = fork();
-        
         if (pid < 0) {
             perror("fork");
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
             return 1;
         }
         if (pid == 0) {
@@ -527,17 +624,15 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             exec_child(args);
             _exit(127);
         }
-        
+
         pgid = pid;
         shell->pipeline_pgid = pgid;
-
         if (setpgid(pid, pgid) < 0 &&
-            errno != EACCES && errno != EINVAL && errno != EPERM) {
-            // ignore benign races
+            errno != EACCES && errno != EINVAL && errno != EPERM)
+        {
+            /* ignore benign races */
         }
-
         give_terminal_to_pgid(shell, pgid);
-        //sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
         if (waitpid(pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
             perror("waitpid");
@@ -549,7 +644,6 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             shell->pipeline_pgid = 0;
             return 128 + WSTOPSIG(status);
         }
-
         if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
         else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
 
@@ -557,17 +651,15 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         shell->pipeline_pgid = 0;
         return last_exit;
     }
-    
-    // Multiple commands in a pipeline
-    pid_t *pids = calloc(num_cmds, sizeof(pid_t)); // array of process IDs
-    if (!pids) { // check for allocation failure
+
+    /* Multi-stage pipeline */
+    pid_t *pids = calloc(num_cmds, sizeof(pid_t));
+    if (!pids) {
         perror("calloc pids");
-        //sigprocmask(SIG_SETMASK, &oldmask, NULL);
         shell->pipeline_pgid = 0;
         return 1;
     }
 
-        // Allocate and initialize all needed pipes at once
     pipe_pair_t *pipes = create_pipes(num_cmds);
     if (num_cmds > 1 && !pipes) {
         perror("pipe setup");
@@ -575,14 +667,11 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         shell->pipeline_pgid = 0;
         return 1;
     }
-    
+
     pid_t last_pid = -1;
     int final_status = 0, got_last = 0;
-    //LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
-    //LOG(LOG_LEVEL_INFO, "num_cmds = %d", num_cmds);
 
-    
-    for (i = 0; i < num_cmds; ++i) { 
+    for (i = 0; i < num_cmds; ++i) {
         if (!cmds[i]) {
             LOG(LOG_LEVEL_INFO, "cmds[%d] is NULL", i);
             continue;
@@ -591,76 +680,37 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             LOG(LOG_LEVEL_INFO, "cmds[%d][0] is NULL", i);
             continue;
         }
-        LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);        
-        
-        if (is_builtin(cmds[i][0])) {
-            if (strcmp(cmds[i][0], "cd") == 0) {
-                handle_cd(cmds[i]);
-                reclaim_terminal(shell);
-                shell->pipeline_pgid = 0;
-                continue;
-            }
-            if (strcmp(cmds[i][0], "exit") == 0) {
-                if (num_cmds == 1) {
-                    shell->running = 0;
-                    return 0;
-                } else {
-                    fprintf(stderr, "tush: builtin 'exit' cannot be used in a pipeline\n");
-                    continue;
-                }
-            }
-                
-            // other builtins...
-    }
-        pids[i] = fork(); 
-        if (pids[i] < 0) {
-            perror("fork");   
-            if (pipes) {
-                for (int j = 0; j < num_cmds - 1; ++j) {
-                    LOG(LOG_LEVEL_INFO, "cmds[%d][%d] = '%s'", i, j, cmds[i][j]);
-                    close(pipes[j][0]);
-                    close(pipes[j][1]);
-                }
-                free(pipes);
-            }
+        LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
+
+        int builtin_res =
+            handle_builtin_in_pipeline(shell, cmds[i], num_cmds);
+        if (builtin_res == 1) continue;
+        if (builtin_res == 2) {
+            destroy_pipes(pipes, num_cmds);
             free(pids);
-            //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            shell->pipeline_pgid = 0;
+            return 0;
+        }
+
+        pids[i] = fork();
+        if (pids[i] < 0) {
+            /* reinsert original per-arg debug safely */
+            if (cmds[i]) {
+                for (int k = 0; cmds[i][k]; ++k) {
+                    LOG(LOG_LEVEL_INFO, "cmds[%d][%d] = '%s'", i, k, cmds[i][k]);
+                }
+            }
+            perror("fork");
+            destroy_pipes(pipes, num_cmds);
+            free(pids);
             shell->pipeline_pgid = 0;
             return 1;
         }
 
         if (pids[i] == 0) {
-            if (i == 0) {
-                setpgid(0, 0);
-            } else {
-                pid_t target = shell->pipeline_pgid;
-                if (target > 0 &&
-                    setpgid(0, target) < 0 &&
-                    errno != EACCES && errno != EINVAL && errno != EPERM) {
-                    // ignore benign races
-                }
-            }
-
-            // Wire pipes with error checks
-            if (i > 0) {
-                if (dup2(pipes[i - 1][0], STDIN_FILENO) < 0) _exit(127);
-            }
-            if (i < num_cmds - 1) {
-                if (dup2(pipes[i][1], STDOUT_FILENO) < 0) _exit(127);
-            }
-
-            if (pipes) {
-                for (int j = 0; j < num_cmds - 1; ++j) {
-                    close(pipes[j][0]);
-                    close(pipes[j][1]);
-                }
-            }
-
-            setup_child_signals();
-            exec_child(cmds[i]);
-            _exit(127);
+            pid_t leader = (pgid == 0) ? 0 : pgid;
+            setup_pipeline_child(i, num_cmds, pipes, cmds[i], leader);
         } else {
-            // parent: first real child, regardless of i
             if (pgid == 0) {
                 pgid = pids[i];
                 shell->pipeline_pgid = pgid;
@@ -672,19 +722,19 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
     }
 
-    last_pid = pids[num_cmds - 1];
-
-    if (pipes) {
-        for (i = 0; i < num_cmds - 1; ++i) {
-            close(pipes[i][0]);
-            close(pipes[i][1]);
+    /* Compute actual forked children count and last_pid safely */
+    int forked = 0;
+    last_pid = -1;
+    for (int k = 0; k < num_cmds; ++k) {
+        if (pids[k] > 0) {
+            ++forked;
+            last_pid = pids[k];
         }
     }
+    int live = forked;
 
-    // Restore signal mask before waiting
-    //sigprocmask(SIG_SETMASK, &oldmask, NULL);
+    if (pipes) close_pipes(pipes, num_cmds);
 
-    int live = num_cmds;
     while (live > 0) {
         pid_t w = waitpid(-pgid, &status, WUNTRACED);
         if (w < 0) {
@@ -693,21 +743,18 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             perror("waitpid");
             break;
         }
-
         if (WIFSTOPPED(status)) {
             reclaim_terminal(shell);
             shell->last_pgid = pgid;
             shell->pipeline_pgid = 0;
-            if (pipes) free(pipes);
+            destroy_pipes(pipes, num_cmds);
             free(pids);
             return 128 + WSTOPSIG(status);
         }
-
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             --live;
             if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
             else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
-
             if (w == last_pid) {
                 final_status = status;
                 got_last = 1;
@@ -724,20 +771,24 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         else if (WIFSIGNALED(final_status)) ret = 128 + WTERMSIG(final_status);
         else                                ret = last_exit;
     } else {
-        int tmp;
-        pid_t r = waitpid(last_pid, &tmp, WNOHANG);
-        if (r == last_pid) {
-            if (WIFEXITED(tmp))        ret = WEXITSTATUS(tmp);
-            else if (WIFSIGNALED(tmp)) ret = 128 + WTERMSIG(tmp);
-            else                       ret = last_exit;
+        if (last_pid > 0) {
+            int tmp;
+            pid_t r = waitpid(last_pid, &tmp, WNOHANG);
+            if (r == last_pid) {
+                if (WIFEXITED(tmp))        ret = WEXITSTATUS(tmp);
+                else if (WIFSIGNALED(tmp)) ret = 128 + WTERMSIG(tmp);
+                else                       ret = last_exit;
+            } else {
+                ret = last_exit;
+            }
         } else {
             ret = last_exit;
         }
     }
 
-    if (pipes) free(pipes);
+    destroy_pipes(pipes, num_cmds);
     free(pids);
-    shell->pipeline_pgid = 0; // reset shared handoff
+    shell->pipeline_pgid = 0;
     return ret;
 }
 
