@@ -13,6 +13,9 @@
 #include <unistd.h> // for getcwd
 #include "debug.h"
 
+#define COLOR_THRASH  "\x1b[36m"
+#define COLOR_RESET "\x1b[0m"
+
 /*Initialize readline library. This function sets up readline for input handling
  It can be used to enable features like command history and line editing */
 void initialize_readline(void) {
@@ -32,7 +35,8 @@ void cleanup_readline(void) {
 int read_input(ShellContext *ctx) { 
     getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
     char prompt[512]; //
-    snprintf(prompt, sizeof(prompt), "THRASH %.502s: ", ctx->cwd); // %.502s limits to 502 chars to avoid overflow
+    const char *sh_color = COLOR_THRASH;
+    snprintf(prompt, sizeof(prompt), "%s THRASH[%s] %.502s: ", sh_color, COLOR_RESET, ctx->cwd); // %.502s limits to 502 chars to avoid overflow
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
