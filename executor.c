@@ -766,6 +766,12 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
 /*=================================process_input_segments=====================================
 processes expanded input, splitting at semicolons for */
 void process_input_segments(ShellContext *shell, const char *expanded_input) {
+    
+    if (strcmp(expanded_input, "$?") == 0) {
+    printf("%d\n", shell->last_status);
+    return;
+    }
+
     // Split the input string into segments using semicolons as delimiters
     char **segments = split_on_semicolons(expanded_input);
     if (!segments) return; // If splitting fails, bail out
