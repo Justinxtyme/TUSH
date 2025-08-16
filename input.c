@@ -13,11 +13,15 @@
 #include <unistd.h> // for getcwd
 #include "debug.h"
 
+/*BASIC ANSI CODES FOR COLOR
+UNCOMMENT IF USING
 #define COLOR_THRASH  "\x1b[32m" // green
 #define STYLE_RESET "\x1b[0m" 
 #define COLOR_CTX "\x1b[35m" // magenta
 #define BOLD "\x1b[1m" // bold/bright
-#define REVERSE "\x1b[4m"
+#define REVERSE "\x1b[4m"*/
+
+
 /*Initialize readline library. This function sets up readline for input handling
  It can be used to enable features like command history and line editing */
 void initialize_readline(void) {
@@ -37,13 +41,15 @@ void cleanup_readline(void) {
 int read_input(ShellContext *ctx) { 
     getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
     char prompt[512]; //
-    const char *sh_color = COLOR_THRASH;
-    const char *ctx_color = COLOR_CTX;
+    
+    //const char *sh_color = COLOR_THRASH;
+    //const char *ctx_color = COLOR_CTX;
     //snprintf(prompt, sizeof(prompt), "%s%s%sTHRASH%s) %s%s%.450s%s: ", //ORIGINAL
+     //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
+
     //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",
     snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;28;255m\002%.450s\001\033[0m\002: ",
     ctx->cwd);
-     //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
