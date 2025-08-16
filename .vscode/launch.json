@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/the1i/CODERZ/TUSH",
-      "program": "c:/Users/the1i/CODERZ/TUSH/build/Debug/outDebug",
+      "cwd": "c:/Users/the1i/CODERZ/thrash",
+      "program": "c:/Users/the1i/CODERZ/thrash/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

@@ -1,4 +1,4 @@
-/*shell.h is the header file for the TUSH shell
+/*shell.h is the header file for the THRASH shell
  It defines the ShellContext structure and function prototypes for shell operations
  It includes necessary libraries and defines constants for input size and history management
  It is used to manage the shell's state, user input, and command history */

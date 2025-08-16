@@ -1,5 +1,5 @@
 // input.c 
-/* This file implements input handling for the TUSH shell
+/* This file implements input handling for the thrash shell
  It uses the readline library for enhanced user input features */
 
 #include <stdio.h>
@@ -32,7 +32,7 @@ void cleanup_readline(void) {
 int read_input(ShellContext *ctx) { 
     getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
     char prompt[512]; //
-    snprintf(prompt, sizeof(prompt), "TUSH %.502s: ", ctx->cwd); // %.502s limits to 502 chars to avoid overflow
+    snprintf(prompt, sizeof(prompt), "THRASH %.502s: ", ctx->cwd); // %.502s limits to 502 chars to avoid overflow
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF

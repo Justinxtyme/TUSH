@@ -23,7 +23,7 @@ OBJ = $(SRC:.c=.o)
 DEPS = $(OBJ:.o=.d)
 
 # Final program name
-TARGET = tush
+TARGET = thrash
 
 # Default target (build the program)
 all: $(TARGET)
