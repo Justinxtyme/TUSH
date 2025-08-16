@@ -14,8 +14,9 @@
 #include "debug.h"
 
 #define COLOR_THRASH  "\x1b[34m" //blue
-#define COLOR_RESET "\x1b[0m"
+#define STYLE_RESET "\x1b[0m"
 #define COLOR_CTX "\x1b[31m" //red
+#define BOLD "\x1b[1m"
 
 /*Initialize readline library. This function sets up readline for input handling
  It can be used to enable features like command history and line editing */
@@ -38,7 +39,8 @@ int read_input(ShellContext *ctx) {
     char prompt[512]; //
     const char *sh_color = COLOR_THRASH;
     const char *ctx_color = COLOR_CTX;
-    snprintf(prompt, sizeof(prompt), "%sTHRASH>%s%s%.484s%s: ", sh_color, COLOR_RESET, ctx_color, ctx->cwd, COLOR_RESET); // %.502s limits to 502 chars to avoid overflow
+    snprintf(prompt, sizeof(prompt), "%s%sTHRASH%s%s%s%.484s%s: ",
+     sh_color, BOLD, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
