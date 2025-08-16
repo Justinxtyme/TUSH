@@ -35,7 +35,7 @@ void cleanup_readline(void) {
  It returns 1 on success and 0 on EOF or error. The input is stored in the ShellContext's input buffer
  It also updates the current working directory in the ShellContext for prompt display */
 int read_input(ShellContext *ctx) { 
-    getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
+    getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
     char prompt[512]; //
     const char *sh_color = COLOR_THRASH;
     const char *ctx_color = COLOR_CTX;
