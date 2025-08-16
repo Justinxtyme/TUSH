@@ -75,6 +75,14 @@ int main() {
             HistoryAddResult hr = history_add(&shell.history, shell.input);
             (void)hr; // if unused
         }        
+        
+        if (strcmp(shell.input, "$?") == 0) {
+            printf("%d\n", shell.last_status);
+            return;
+        }
+
+
+        
         //add_to_history(&shell, shell.input); // adds input to history, for reuse
         //int num_cmds = 0;
         // Expand variables like $?
