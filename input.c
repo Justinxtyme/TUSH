@@ -13,7 +13,7 @@
 #include <unistd.h> // for getcwd
 #include "debug.h"
 
-#define COLOR_THRASH  "\x1b[44m" //blue
+#define COLOR_THRASH  "\x1b[34m" //blue
 #define COLOR_RESET "\x1b[0m"
 #define COLOR_CTX "\x1b[31m" //red
 
