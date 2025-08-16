@@ -815,3 +815,12 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
     // Free the array of input segments
     free_segments(segments);
 }
+
+void free_segments(char **segments) {
+    if (!segments) return;
+    for (int i = 0; segments[i]; ++i) {
+        free(segments[i]);
+    }
+    free(segments);
+}
+
