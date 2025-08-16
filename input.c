@@ -48,7 +48,7 @@ int read_input(ShellContext *ctx) {
      //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
 
     //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",
-    snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;107;26;214m\002%.450s\001\033[0m\002: ",
+    snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;114;214m\002%.450s\001\033[0m\002: ",
     ctx->cwd);
 
     char *line = readline(prompt);
