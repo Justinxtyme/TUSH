@@ -13,10 +13,10 @@
 #include <unistd.h> // for getcwd
 #include "debug.h"
 
-#define COLOR_THRASH  "\x1b[34m" //blue
-#define STYLE_RESET "\x1b[0m"
-#define COLOR_CTX "\x1b[31m" //red
-#define BOLD "\x1b[1m"
+#define COLOR_THRASH  "\x1b[32m" // green
+#define STYLE_RESET "\x1b[0m" 
+#define COLOR_CTX "\x1b[31m" // red
+#define BOLD "\x1b[1m" // bold/bright
 
 /*Initialize readline library. This function sets up readline for input handling
  It can be used to enable features like command history and line editing */
