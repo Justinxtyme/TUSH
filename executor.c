@@ -61,41 +61,45 @@
 static const char *progname = "thrash"; //
 
 char *expand_variables(const char *input, int last_exit) {
+    // If input is NULL, return NULL immediately
     if (!input) return NULL;
 
-    const char *needle = "$?";
-    char *pos = strstr(input, needle);
-    if (!pos) {
-        // No variable to expand — return a copy
+    const char *needle = "$?"; // Target variable to expand (represents last exit status)
+    char *pos = strstr(input, needle); 
+    if (!pos) { 
+        // If "$?" is not found in input, return a duplicate of the original string
         return strdup(input);
     }
 
-    // Convert last_exit to string
+    // Convert last_exit integer to string (e.g., 1 → "1")
     char exit_str[16];
     snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
 
-    // Allocate enough space: original + extra digits
+    // Calculate lengths for allocation
     size_t input_len = strlen(input);
-    size_t result_len = input_len + 16;  // generous buffer
-    char *result = calloc(1, result_len);
-    if (!result) return NULL;
+    size_t result_len = input_len + 16;  // Add extra space for expansion (safe buffer)
+    char *result = calloc(1, result_len); // Allocate zero-initialized memory
+    if (!result) return NULL; // Bail out if allocation fails
 
-    const char *src = input;
-    char *dst = result;
+    const char *src = input; // Source pointer for reading input
+    char *dst = result;      // Destination pointer for writing output
 
+    // Iterate through input string
     while (*src) {
+        // If we find "$?" pattern
         if (src[0] == '$' && src[1] == '?') {
-            strcpy(dst, exit_str);
-            dst += strlen(exit_str);
-            src += 2;
+            strcpy(dst, exit_str);        // Copy exit status string to result
+            dst += strlen(exit_str);      // Advance destination pointer
+            src += 2;                     // Skip over "$?" in source
         } else {
-            *dst++ = *src++;
+            *dst++ = *src++;              // Copy character as-is
         }
     }
 
-    *dst = '\0';
-    return result;
+    *dst = '\0'; // Null-terminate the result string
+    return result; // Return the expanded string
 }
+
 
 extern char **environ;  // Environment passed to execve
 
@@ -527,7 +531,7 @@ static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_
 }
 
 /* Child-side setup: PGID, dup2 pipes, close FDs, reset signals, exec. */
-static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) {
+static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) { 
     /* Process group: leader or join existing group */
     if (leader_pgid == 0) {
         setpgid(0, 0);
@@ -563,65 +567,71 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
 
 
 /* ================= Refactored launch_pipeline ================= */
-int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
+       int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int i, status = 0, last_exit = 0;
     pid_t pgid = 0;
-    shell->pipeline_pgid = 0;
+    shell->pipeline_pgid = 0; // Reset pipeline PGID
 
     /* Single-command case */
     if (num_cmds == 1) {
         char **args = cmds[0];
-        if (!args || !args[0]) return 0;
+        if (!args || !args[0]) return 0; // Empty command
+
+        // Handle built-in 'cd' directly
         if (strcmp(args[0], "cd") == 0) return handle_cd(args);
 
-        pid_t pid = fork();
+        pid_t pid = fork(); // Fork child process
         if (pid < 0) {
             perror("fork");
             return 1;
         }
         if (pid == 0) {
-            setpgid(0, 0);
-            setup_child_signals();
-            exec_child(args);
-            _exit(127);
+            setpgid(0, 0);               // Create new process group
+            setup_child_signals();      // Reset signal handlers
+            exec_child(args);           // Exec external command
+            _exit(127);                 // Failsafe exit if exec fails
         }
 
         pgid = pid;
         shell->pipeline_pgid = pgid;
+
+        // Set PGID, ignore benign races
         if (setpgid(pid, pgid) < 0 &&
             errno != EACCES && errno != EINVAL && errno != EPERM)
         {
-            /* ignore benign races */
+            // benign race, ignore
         }
-        give_terminal_to_pgid(shell, pgid);
 
+        give_terminal_to_pgid(shell, pgid); // Give terminal to child
+
+        // Wait for child to finish or stop
         if (waitpid(pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
             perror("waitpid");
         }
 
         if (WIFSTOPPED(status)) {
-            reclaim_terminal(shell);
-            shell->last_pgid = pgid;
+            reclaim_terminal(shell);        // Reclaim terminal on stop
+            shell->last_pgid = pgid;        // Save PGID for job tracking
             shell->pipeline_pgid = 0;
-            return 128 + WSTOPSIG(status);
+            return 128 + WSTOPSIG(status);  // Return stop signal code
         }
-        if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
-        else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
+        if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);   // Normal exit
+        else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status); // Killed by signal
 
         reclaim_terminal(shell);
         shell->pipeline_pgid = 0;
-        return last_exit;
+        return last_exit; // Return final exit status
     }
 
     /* Multi-stage pipeline */
-    pid_t *pids = calloc(num_cmds, sizeof(pid_t));
+    pid_t *pids = calloc(num_cmds, sizeof(pid_t)); // Allocate PID array
     if (!pids) {
         perror("calloc pids");
         shell->pipeline_pgid = 0;
         return 1;
     }
 
-    pipe_pair_t *pipes = create_pipes(num_cmds);
+    pipe_pair_t *pipes = create_pipes(num_cmds); // Create pipe pairs
     if (num_cmds > 1 && !pipes) {
         perror("pipe setup");
         free(pids);
@@ -643,9 +653,9 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
         LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
 
-        int builtin_res =
-            handle_builtin_in_pipeline(shell, cmds[i], num_cmds);
-        if (builtin_res == 1) continue;
+        // Handle built-ins inside pipeline
+        int builtin_res = handle_builtin_in_pipeline(shell, cmds[i], num_cmds);
+        if (builtin_res == 1) continue; // Skip fork
         if (builtin_res == 2) {
             destroy_pipes(pipes, num_cmds);
             free(pids);
@@ -653,9 +663,9 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             return 0;
         }
 
-        pids[i] = fork();
+        pids[i] = fork(); // Fork pipeline stage
         if (pids[i] < 0) {
-            /* reinsert original per-arg debug safely */
+            // Log args for debugging
             if (cmds[i]) {
                 for (int k = 0; cmds[i][k]; ++k) {
                     LOG(LOG_LEVEL_INFO, "cmds[%d][%d] = '%s'", i, k, cmds[i][k]);
@@ -669,16 +679,16 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         if (pids[i] == 0) {
-            pid_t leader = (pgid == 0) ? 0 : pgid;
-            setup_pipeline_child(i, num_cmds, pipes, cmds[i], leader);
+            pid_t leader = (pgid == 0) ? 0 : pgid; // First child becomes group leader
+            setup_pipeline_child(i, num_cmds, pipes, cmds[i], leader); // Setup redirections and exec
         } else {
             if (pgid == 0) {
-                pgid = pids[i];
+                pgid = pids[i]; // First child sets PGID
                 shell->pipeline_pgid = pgid;
                 try_setpgid(pids[i], pgid);
-                give_terminal_to_pgid(shell, pgid);
+                give_terminal_to_pgid(shell, pgid); // Give terminal to pipeline
             } else {
-                try_setpgid(pids[i], pgid);
+                try_setpgid(pids[i], pgid); // Join existing PGID
             }
         }
     }
@@ -689,15 +699,16 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     for (int k = 0; k < num_cmds; ++k) {
         if (pids[k] > 0) {
             ++forked;
-            last_pid = pids[k];
+            last_pid = pids[k]; // Track last valid PID
         }
     }
     int live = forked;
 
-    if (pipes) close_pipes(pipes, num_cmds);
+    if (pipes) close_pipes(pipes, num_cmds); // Close pipe fds in parent
 
+    // Wait for all children in the pipeline
     while (live > 0) {
-        pid_t w = waitpid(-pgid, &status, WUNTRACED);
+        pid_t w = waitpid(-pgid, &status, WUNTRACED); // Wait for any child in PGID
         if (w < 0) {
             if (errno == EINTR) continue;
             if (errno == ECHILD) break;
@@ -710,7 +721,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             shell->pipeline_pgid = 0;
             destroy_pipes(pipes, num_cmds);
             free(pids);
-            return 128 + WSTOPSIG(status);
+            return 128 + WSTOPSIG(status); // Return stop signal code
         }
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             --live;
@@ -718,12 +729,12 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
             if (w == last_pid) {
                 final_status = status;
-                got_last = 1;
+                got_last = 1; // Mark final command status
             }
         }
     }
 
-    reclaim_terminal(shell);
+    reclaim_terminal(shell); // Restore terminal to shell
     shell->last_pgid = pgid;
 
     int ret;
@@ -734,7 +745,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     } else {
         if (last_pid > 0) {
             int tmp;
-            pid_t r = waitpid(last_pid, &tmp, WNOHANG);
+            pid_t r = waitpid(last_pid, &tmp, WNOHANG); // Try to get last PID status
             if (r == last_pid) {
                 if (WIFEXITED(tmp))        ret = WEXITSTATUS(tmp);
                 else if (WIFSIGNALED(tmp)) ret = 128 + WTERMSIG(tmp);
@@ -747,62 +758,60 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
     }
 
-    destroy_pipes(pipes, num_cmds);
+    destroy_pipes(pipes, num_cmds); // Cleanup
     free(pids);
     shell->pipeline_pgid = 0;
-    return ret;
-}
-
-
-void free_segments(char **segments) {
-    if (!segments) return;
-    for (int i = 0; segments[i]; ++i) {
-        free(segments[i]);
-    }
-    free(segments);
+    return ret; // Return final status
 }
 /*=================================process_input_segments=====================================
 processes expanded input, splitting at semicolons for */
 void process_input_segments(ShellContext *shell, const char *expanded_input) {
+    // Split the input string into segments using semicolons as delimiters
     char **segments = split_on_semicolons(expanded_input);
-    if (!segments) return;
+    if (!segments) return; // If splitting fails, bail out
 
+    // Iterate over each segment (e.g., "ls -l", "echo hi", etc.)
     for (int i = 0; segments[i]; ++i) {
         int num_cmds = 0;
+
+        // Parse the segment into a pipeline of commands
         char ***cmds = parse_pipeline(segments[i], &num_cmds);
         LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
 
+        // Skip empty or invalid pipelines
         if (num_cmds == 0 || !cmds || !cmds[0]) continue;
 
+        // Check for built-in "exit" command in the first command of the pipeline
         if (cmds[0][0] && strcmp(cmds[0][0], "exit") == 0) {
-            shell->running = 0;
-            break;
+            shell->running = 0; // Signal shell to stop running
+            break;              // Exit the loop immediately
         }
-        LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);    
-        
+
+        LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);
+
+        // Launch the pipeline and capture its exit status
         int status = launch_pipeline(shell, cmds, num_cmds);
-        shell->last_status = status;
+        shell->last_status = status; // Save status for $? expansion
         LOG(LOG_LEVEL_INFO, "Segment %d exited with status %d", i, status);
+
+        // If the pipeline was stopped (e.g., via Ctrl-Z), register it as a job
         if (status == 128 + SIGTSTP) {
-            add_job(shell->last_pgid, segments[i]);
+            add_job(shell->last_pgid, segments[i]); // Track job for fg/bg
             fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id()-1, segments[i]);
         }
 
         LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
 
-        // Free cmds...
+        // Free memory allocated for the pipeline commands
         for (int j = 0; j < num_cmds; ++j) {
             for (int k = 0; cmds[j][k]; ++k) {
-                free(cmds[j][k]);
+                free(cmds[j][k]); // Free each argument
             }
-            free(cmds[j]);
+            free(cmds[j]); // Free each command array
         }
-        free(cmds);
+        free(cmds); // Free the top-level command list
     }
 
+    // Free the array of input segments
     free_segments(segments);
 }
-
-
-
-// Program prefix for error messages. Consider wiring this to your prompt name.

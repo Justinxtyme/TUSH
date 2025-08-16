@@ -9,17 +9,17 @@
 
 
 // job control
-void setup_shell_job_control(ShellContext *shell) {
+void setup_shell_job_control(ShellContext *shell) {  
     // Open controlling terminal
-    shell->tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC);
+    shell->tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC); // Open the controlling terminal
     if (shell->tty_fd < 0) {
         // Fallback to stdin if /dev/tty not available
-        shell->tty_fd = dup(STDIN_FILENO);
+        shell->tty_fd = dup(STDIN_FILENO); // Duplicate stdin
     }
 
     // Put shell in its own process group
-    shell->shell_pgid = getpid();
-    if (setpgid(0, shell->shell_pgid) < 0 && errno != EACCES) {
+    shell->shell_pgid = getpid(); // Get the shell's process group ID
+    if (setpgid(0, shell->shell_pgid) < 0 && errno != EACCES) { // EACCES means we are already in a group
         perror("setpgid(shell)");
     }
 
@@ -29,8 +29,8 @@ void setup_shell_job_control(ShellContext *shell) {
     }
 
     // Shell should ignore job-control signals
-    struct sigaction sa = {0};
-    sa.sa_handler = SIG_IGN;
+    struct sigaction sa = {0}; 
+    sa.sa_handler = SIG_IGN; 
 
     sigaction(SIGTSTP, &sa, NULL); // do not allow shell itself to be stopped
     sigaction(SIGTTIN, &sa, NULL); // avoid stop on tty reads while bg

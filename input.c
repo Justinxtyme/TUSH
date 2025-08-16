@@ -42,21 +42,20 @@ int read_input(ShellContext *ctx) {
     getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
     char prompt[512]; //
     
-    //const char *sh_color = COLOR_THRASH;
+   /* const char *sh_color = COLOR_THRASH;
     //const char *ctx_color = COLOR_CTX;
     //snprintf(prompt, sizeof(prompt), "%s%s%sTHRASH%s) %s%s%.450s%s: ", //ORIGINAL
      //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
 
-    //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",
-    snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;114;214m\002%.450s\001\033[0m\002: ",
+    //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",*/
+    snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;;214m\002%.450s\001\033[0m\002: ",
     ctx->cwd);
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
 
     //if (*line) add_history(line); // non-empty input gets saved
-
-    strncpy(ctx->input, line, sizeof(ctx->input) - 1);
+    strncpy(ctx->input, line, sizeof(ctx->input) - 1); // 
     ctx->input[sizeof(ctx->input) - 1] = '\0'; // ensure null-termination
 
     free(line); // readline allocates with malloc
@@ -69,7 +68,7 @@ bool is_numeric(const char *s) {
     // Skip leading whitespace
     while (isspace((unsigned char)*s)) s++;
 
-    if (!*s) return false; // empty after trimming
+    if (!*s) return false; // if false, input empty after trimming
 
     for (; *s; s++) {
         if (!isdigit((unsigned char)*s)) return false;
