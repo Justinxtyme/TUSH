@@ -78,7 +78,7 @@ int main() {
         
         if (strcmp(shell.input, "$?") == 0) {
             printf("%d\n", shell.last_status);
-            return;
+            break;
         }
 
 
