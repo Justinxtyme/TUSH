@@ -36,7 +36,7 @@ int read_input(ShellContext *ctx) {
     getcwd(ctx->cwd, sizeof(ctx->cwd) - 8); // update cwd for prompt
     char prompt[512]; //
     const char *sh_color = COLOR_THRASH;
-    snprintf(prompt, sizeof(prompt), "%sTHRASH[%s]%.502s: ", sh_color, COLOR_RESET, ctx->cwd); // %.502s limits to 502 chars to avoid overflow
+    snprintf(prompt, sizeof(prompt), "%sTHRASH%s %.502s: ", sh_color, COLOR_RESET, ctx->cwd); // %.502s limits to 502 chars to avoid overflow
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
