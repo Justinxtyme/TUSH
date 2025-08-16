@@ -15,7 +15,7 @@
 
 #define COLOR_THRASH  "\x1b[32m" // green
 #define STYLE_RESET "\x1b[0m" 
-#define COLOR_CTX "\x1b[31m" // red
+#define COLOR_CTX "\x1b[35m" // magenta
 #define BOLD "\x1b[1m" // bold/bright
 #define REVERSE "\x1b[4m"
 /*Initialize readline library. This function sets up readline for input handling
