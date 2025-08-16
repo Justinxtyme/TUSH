@@ -39,9 +39,10 @@ int read_input(ShellContext *ctx) {
     char prompt[512]; //
     const char *sh_color = COLOR_THRASH;
     const char *ctx_color = COLOR_CTX;
-    //snprintf(prompt, sizeof(prompt), "%s%s%sTHRASH%s) %s%s%.450s%s: ",
-    snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",
-     sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow
+    //snprintf(prompt, sizeof(prompt), "%s%s%sTHRASH%s) %s%s%.450s%s: ", //ORIGINAL
+    //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",
+    snprintf(prompt, sizeof(prompt), "\001\033[38;2;158;96;3mTHRASH)\033[0m\n\002 \001\033[38;2;158;96;3m%.450s\033[0m\n\002: ",
+     //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
 
     char *line = readline(prompt);
     if (!line) return 0; // Ctrl+D or EOF
