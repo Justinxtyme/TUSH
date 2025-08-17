@@ -6,7 +6,8 @@
 #include "shell.h" // Include the shell context and function declarations
 #include "executor.h" // Include the command execution function
 #include "jobs.h"
-#include "history.h" 
+#include "history.h"
+#include "var.h" 
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -30,8 +31,13 @@
 // --- Main Loop ---
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
-    //init_shell(&shell); // Initialize the shell context
-    setup_parent_signals();
+
+    if (!vart_init(&shell.vars, 64)) { // initialize var tables 
+    LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
+    exit(EXIT_FAILURE);
+    }
+    
+    setup_parent_signals(); 
     setup_shell_job_control(&shell);
     initialize_readline();
     
@@ -70,7 +76,7 @@ int main() {
             perror("readline failed");
             break; // Ctrl+D or error
         }
-        if (shell.input[0] != '\0') { // history 
+        if (shell.input[0] != '\0') { 
             // Add to persistent + mirror to readline
             HistoryAddResult hr = history_add(&shell.history, shell.input);
             (void)hr; // if unused
@@ -81,10 +87,6 @@ int main() {
             break;
         }
 
-
-        
-        //add_to_history(&shell, shell.input); // adds input to history, for reuse
-        //int num_cmds = 0;
         // Expand variables like $?
         char *expanded = expand_variables(shell.input, shell.last_status);
         if (!expanded) {
@@ -102,6 +104,7 @@ int main() {
         LOG(LOG_LEVEL_WARN, "Failed to save history: %s", strerror(errno));
     }
     history_dispose(&shell.history);  // free internal buffers
-    cleanup_readline();
+    //cleanup_readline();
+    vart_destroy(&shell.vars);
     return 0;
 }

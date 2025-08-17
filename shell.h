@@ -5,6 +5,7 @@
 
 #include <sys/types.h>
 #include "history.h"
+#include "var.h" // Include variable table definitions
  #ifndef SHELL_H
 #define SHELL_H
 
@@ -13,17 +14,15 @@
 typedef struct {
     char input[INPUT_SIZE];   // User input buffer
     int running;              // Shell loop control flag
-    int  last_status;
-    int   tty_fd;
-    pid_t shell_pgid;
-    pid_t last_pgid;    // new field
-    pid_t pipeline_pgid;
+    int  last_status; // Last command exit status
+    int   tty_fd; // Terminal file descriptor
+    pid_t shell_pgid; // Shell process group ID
+    pid_t last_pgid;    // Last foreground process group ID
+    pid_t pipeline_pgid; // Current pipeline process group ID
     char cwd[512];            // Current working directory
-    History history;    
-    // Add more fields as needed: history, env vars, etc.
+    History history; // Command history
+    VarTable *vars; // Hash table for variables
 } ShellContext;
-
-void init_shell(ShellContext *ctx); // Initialize shell context
 
 void add_to_history(ShellContext *ctx, const char *input); // Add command to history
 

@@ -12,21 +12,26 @@
 
 /* In main(), call once before the REPL so the shell ignores these signals itself */
 void setup_parent_signals(void) {
-    struct sigaction sa = {0};
-    sa.sa_handler = SIG_IGN;
-    sigaction(SIGINT,  &sa, NULL);
-    sigaction(SIGQUIT, &sa, NULL);
-    sigaction(SIGTSTP, &sa, NULL);
+    // Initializes a sigaction structure, define how a process responds to a specific signal.
+    // Setting it to {0} clears all its members.
+    struct sigaction sa = {0}; 
+    //Sets the sa_handler member of the sigaction structure to SIG_IGN. 
+    //SIG_IGN indicates that the specified signals should be ignored by the process.
+    sa.sa_handler = SIG_IGN; //SIG ignore
+    sigaction(SIGINT,  &sa, NULL); // ctrl C
+    sigaction(SIGQUIT, &sa, NULL); // ctrl /
+    sigaction(SIGTSTP, &sa, NULL); // ctrl z
 }
 
 /* In each child, restore default signal actions */
 void setup_child_signals(void) {
     struct sigaction sa = {0};
-    sa.sa_handler = SIG_DFL;
+    //SIG_DFL indicates that the specified signals should revert to their default actions
+    sa.sa_handler = SIG_DFL; // SIG default
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
     sigaction(SIGTSTP, &sa, NULL);
-    sigaction(SIGTTIN, &sa, NULL);
-    sigaction(SIGTTOU, &sa, NULL);
+    sigaction(SIGTTIN, &sa, NULL); //terminal input sig
+    sigaction(SIGTTOU, &sa, NULL); //terminal output sig
     sigaction(SIGCHLD, &sa, NULL);
 }

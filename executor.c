@@ -77,7 +77,7 @@ char *expand_variables(const char *input, int last_exit) {
 
     // Calculate lengths for allocation
     size_t input_len = strlen(input);
-    size_t result_len = input_len + 16;  // Add extra space for expansion (safe buffer)
+    size_t result_len = input_len + 16;  // Add extra space for expansion (safe bufffer)
     char *result = calloc(1, result_len); // Allocate zero-initialized memory
     if (!result) return NULL; // Bail out if allocation fails
 
@@ -100,9 +100,7 @@ char *expand_variables(const char *input, int last_exit) {
     return result; // Return the expanded string
 }
 
-
 extern char **environ;  // Environment passed to execve
-
 
 /*
  * has_slash
@@ -253,44 +251,6 @@ enum path_lookup {
     }
 }
 
-/* parse_pipeline - Split input into separate commands for a pipeline
-   it returns an array of command arguments (argv)
-   while also updating the num_cmds variable to reflect the number of commands found.*/
-/*char ***parse_pipeline(const char *input, int *num_cmds) {
-    char *copy = strdup(input);
-    if (!copy) return NULL;
-
-    char ***cmds = calloc(MAX_CMDS, sizeof(char **));
-    if (!cmds) {
-        free(copy);
-        return NULL;
-    }
-
-    int cmd_index = 0;
-    int arg_index = 0;
-    char *token = strtok(copy, " ");
-    char **argv = calloc(MAX_ARGS, sizeof(char *));
-
-    while (token) {
-        if (strcmp(token, "|") == 0) {
-            argv[arg_index] = NULL;
-            cmds[cmd_index++] = argv;
-            argv = calloc(MAX_ARGS, sizeof(char *));
-            arg_index = 0;
-        } else {
-            argv[arg_index++] = strdup(token);
-        }
-        token = strtok(NULL, " ");
-    }
-
-    argv[arg_index] = NULL;
-    cmds[cmd_index++] = argv;
-    *num_cmds = cmd_index;
-
-    free(copy);
-    return cmds;
-}*/
-
 char ***parse_pipeline(const char *input, int *num_cmds) {
     char ***cmds = calloc(MAX_CMDS, sizeof(char **));
     if (!cmds) return NULL;
@@ -304,15 +264,15 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
     }
 
     const char *p = input;
-    char token_buf[1024];
-    int buf_index = 0;
+    char token_buff[1024];
+    int buff_index = 0;
     bool in_single = false, in_double = false;
 
     while (*p) {
         char c = *p;
 
         if (c == '\\' && p[1]) {
-            token_buf[buf_index++] = p[1];
+            token_buff[buff_index++] = p[1];
             p += 2;
         } else if (c == '\'' && !in_double) {
             in_single = !in_single;
@@ -321,10 +281,10 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
             in_double = !in_double;
             p++;
         } else if (c == '|' && !in_single && !in_double) {
-            if (buf_index > 0) {
-                token_buf[buf_index] = '\0';
-                argv[arg_index++] = strdup(token_buf);
-                buf_index = 0;
+            if (buff_index > 0) {
+                token_buff[buff_index] = '\0';
+                argv[arg_index++] = strdup(token_buff);
+                buff_index = 0;
             }
             argv[arg_index] = NULL;
             cmds[cmd_index++] = argv;
@@ -332,21 +292,21 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
             arg_index = 0;
             p++;
         } else if (isspace(c) && !in_single && !in_double) {
-            if (buf_index > 0) {
-                token_buf[buf_index] = '\0';
-                argv[arg_index++] = strdup(token_buf);
-                buf_index = 0;
+            if (buff_index > 0) {
+                token_buff[buff_index] = '\0';
+                argv[arg_index++] = strdup(token_buff);
+                buff_index = 0;
             }
             p++;
         } else {
-            token_buf[buf_index++] = c;
+            token_buff[buff_index++] = c;
             p++;
         }
     }
 
-    if (buf_index > 0) {
-        token_buf[buf_index] = '\0';
-        argv[arg_index++] = strdup(token_buf);
+    if (buff_index > 0) {
+        token_buff[buff_index] = '\0';
+        argv[arg_index++] = strdup(token_buff);
     }
 
     argv[arg_index] = NULL;

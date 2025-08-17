@@ -11,16 +11,16 @@
 // job control
 void setup_shell_job_control(ShellContext *shell) {  
     // Open controlling terminal
-    shell->tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC); // Open the controlling terminal
-    if (shell->tty_fd < 0) {
+    shell->tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC); // Open the controlling terminal. O_CLOEXEC=close on exec
+    if (shell->tty_fd < 0) { 
         // Fallback to stdin if /dev/tty not available
         shell->tty_fd = dup(STDIN_FILENO); // Duplicate stdin
     }
 
     // Put shell in its own process group
-    shell->shell_pgid = getpid(); // Get the shell's process group ID
-    if (setpgid(0, shell->shell_pgid) < 0 && errno != EACCES) { // EACCES means we are already in a group
-        perror("setpgid(shell)");
+    shell->shell_pgid = getpid(); // Get the shell's process ID and sets as pgid with setpgid
+    if (setpgid(0, shell->shell_pgid) < 0 && errno != EACCES) { // EACCES means we are already in a group (permission denied)
+        perror("setpgid(shell)"); 
     }
 
     // Make shell the foreground job on the terminal
@@ -39,4 +39,8 @@ void setup_shell_job_control(ShellContext *shell) {
     // Also typically ignore SIGINT and SIGQUIT in the shell itself
     sigaction(SIGINT,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
+}
+
+setup_variable_table(ShellContext *shell) {
+    
 }
