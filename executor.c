@@ -51,6 +51,8 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <ctype.h>  
+#include <errno.h>
+#include <time.h>
 
 #define MAX_CMDS 16
 #define MAX_ARGS 64
@@ -461,11 +463,28 @@ static void destroy_pipes(pipe_pair_t *pipes, int num_cmds) {
 
 static void try_setpgid(pid_t pid, pid_t pgid) {
     if (pid <= 0 || pgid <= 0) return;
-    for (int attempt = 0; attempt < 5; ++attempt) {
+
+    struct timespec delay = {0, 5 * 1000 * 1000}; // 5ms
+
+    for (int attempt = 0; attempt < 10; ++attempt) {
         if (setpgid(pid, pgid) == 0) return;
-        if (errno == EACCES || errno == EINVAL || errno == EPERM) return;
-        usleep(5000);
+
+        switch (errno) {
+            case EACCES:
+            case EINVAL:
+            case EPERM:
+            case ESRCH:
+                return; // Fatal or process gone
+            default:
+                // Transient error—retry
+                break;
+        }
+
+        nanosleep(&delay, NULL);
     }
+    // Optional: log persistent failure
+    fprintf(stderr, "try_setpgid: failed to setpgid(%d, %d): %s\n",
+            pid, pgid, strerror(errno));
 }
 
 static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_cmds) {                                      
