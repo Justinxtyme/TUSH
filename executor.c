@@ -503,8 +503,8 @@ static pipe_pair_t *create_pipes(int num_cmds) {
     #endif
         }
     return pipes;
-    } }
-
+    } 
+}
 
 //=====================================EXEC_CHILD================================================
 // used for executing child processes, including resolving paths and setting up the environment
