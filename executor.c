@@ -53,6 +53,7 @@
 #include <ctype.h>  
 #include <errno.h>
 #include <time.h>
+#include <limits.h>
 
 #define MAX_CMDS 16
 #define MAX_ARGS 64
@@ -102,13 +103,165 @@ char *expand_variables(const char *input, int last_exit) {
     return result; // Return the expanded string
 }
 
+
+/* Growable buffer helpers */
+static int ensure_cap(char **buf, size_t *cap, size_t need, char **cursor) {
+    size_t used = (size_t)(*cursor - *buf);
+    if (need <= *cap) return 1;
+    size_t new_cap = *cap ? *cap : 64;
+    while (new_cap < need) {
+        new_cap = new_cap < (SIZE_MAX / 2) ? new_cap * 2 : SIZE_MAX;
+        if (new_cap == SIZE_MAX && new_cap < need) return 0;
+    }
+    char *nbuf = realloc(*buf, new_cap);
+    if (!nbuf) return 0;
+    *buf = nbuf;
+    *cap = new_cap;
+    *cursor = nbuf + used;
+    return 1;
+}
+
+static int append_mem(char **buf, size_t *cap, char **cursor, const void *src, size_t n) {
+    size_t used = (size_t)(*cursor - *buf);
+    if (!ensure_cap(buf, cap, used + n + 1, cursor)) return 0; // +1 for NUL safety
+    memcpy(*cursor, src, n);
+    *cursor += n;
+    **cursor = '\0';
+    return 1;
+}
+
+static int append_ch(char **buf, size_t *cap, char **cursor, char c) {
+    return append_mem(buf, cap, cursor, &c, 1);
+}
+/* ... keep your ensure_cap/append_mem/append_ch helpers above ... */
+/* Expand variables:
+ *  - $?      -> last_exit
+ *  - $NAME   -> lookup via vart_get()
+ *  - ${NAME} -> lookup; if missing `}` emit literal "${" + rest
+ *  - \$      -> literal $
+ *
+ * Returns malloc'd string (caller frees) or NULL on OOM/error.
+ */
+char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars) {
+    if (!input) return NULL;
+
+    char exit_str[16];
+    int exit_len = snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
+    if (exit_len < 0) return NULL;
+    if (exit_len >= (int)sizeof(exit_str)) {
+        /* snprintf would have truncated — treat as error to avoid partial data */
+        return NULL;
+    }
+
+    char *out = NULL;
+    size_t cap = 0;
+    char *dst = NULL;
+
+    if (!ensure_cap(&out, &cap, 64, &dst)) return NULL;
+    *dst = '\0';
+
+    const char *src = input;
+    while (*src) {
+        /* Escaped dollar: \$  -> emit literal '$' (drop backslash) */
+        if (src[0] == '\\' && src[1] == '$') {
+            if (!append_ch(&out, &cap, &dst, '$')) goto oom;
+            src += 2;
+            continue;
+        }
+
+        if (*src != '$') {
+            if (!append_ch(&out, &cap, &dst, *src++)) goto oom;
+            continue;
+        }
+
+        /* We have a '$' */
+        src++; /* consume '$' */
+
+        /* Case: $? */
+        if (*src == '?') {
+            if (!append_mem(&out, &cap, &dst, exit_str, (size_t)exit_len)) goto oom;
+            src++;
+            continue;
+        }
+
+        /* Case: ${NAME} */
+        if (*src == '{') {
+            const char *name_start = ++src; /* skip '{' */
+            const char *scan = name_start;
+            while (*scan && *scan != '}') scan++;
+            if (*scan != '}') {
+                /* No closing brace: emit literal "${" and reprocess rest literally */
+                if (!append_mem(&out, &cap, &dst, "${", 2)) goto oom;
+                src = name_start; /* reprocess rest literally */
+                continue;
+            }
+            size_t name_len = (size_t)(scan - name_start);
+            if (name_len == 0) {
+                /* Empty name -> literal ${} */
+                if (!append_mem(&out, &cap, &dst, "${}", 3)) goto oom;
+                src = scan + 1;
+                continue;
+            }
+
+            char name[256];
+            if (name_len >= sizeof(name)) name_len = sizeof(name) - 1;
+            memcpy(name, name_start, name_len);
+            name[name_len] = '\0';
+
+            const char *val = "";
+            if (vars) {
+                Var *v = vart_get(vars, name);
+                if (v && v->value) val = v->value;
+            }
+            if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
+            src = scan + 1; /* skip '}' */
+            continue;
+        }
+
+        /* Case: $NAME where NAME = [A-Za-z_][A-Za-z0-9_]* */
+        unsigned char c = (unsigned char)*src;
+        if (isalpha(c) || c == '_') {
+            const char *name_start = src;
+            src++;
+            while (*src) {
+                unsigned char d = (unsigned char)*src;
+                if (isalnum(d) || d == '_') src++;
+                else break;
+            }
+            size_t name_len = (size_t)(src - name_start);
+            char name[256];
+            if (name_len >= sizeof(name)) name_len = sizeof(name) - 1;
+            memcpy(name, name_start, name_len);
+            name[name_len] = '\0';
+
+            const char *val = "";
+            if (vars) {
+                Var *v = vart_get(vars, name);
+                if (v && v->value) val = v->value;
+            }
+            if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
+            continue;
+        }
+
+        /* Unsupported/positional/ lone '$' -> emit literal '$' and reprocess next char */
+        if (!append_ch(&out, &cap, &dst, '$')) goto oom;
+        /* do not advance src here; next loop will handle current char */
+    }
+
+    *dst = '\0';
+    return out;
+
+oom:
+    free(out);
+    return NULL;
+}
+
 extern char **environ;  // Environment passed to execve
 
-/*
- * has_slash
+
+/* has_slash
  * Returns true if the string contains a '/' character.
- * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls).
- */
+ * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls). */
 bool has_slash(const char *s) {
     //return s && strchr(s, '/') != NULL;
     LOG(LOG_LEVEL_INFO, "ENTER has_slash(\"%s\")", s ? s : "(null)");
@@ -116,11 +269,10 @@ bool has_slash(const char *s) {
     LOG(LOG_LEVEL_INFO, "  has_slash → %s", found ? "true" : "false");
     return found;
 }
-/*
- * is_directory
+
+/* is_directory
  * stat(2) the path and report whether it's a directory.
- * Returns false on stat errors or when not a directory.
- */
+ * Returns false on stat errors or when not a directory.  */
 bool is_directory(const char *path) {
     struct stat st;
     LOG(LOG_LEVEL_INFO, "ENTER is_directory(\"%s\")", path ? path : "(null)");
@@ -129,11 +281,9 @@ bool is_directory(const char *path) {
     return rd;
 }
 
-/*
- * is_regular
+/* is_regular
  * stat(2) the path and report whether it's a regular file.
- * Returns false on stat errors or when not a regular file.
- */
+ * Returns false on stat errors or when not a regular file.  */
 bool is_regular(const char *path) {
     struct stat st;
     LOG(LOG_LEVEL_INFO, "ENTER is_regular(\"%s\")", path ? path : "(null)");
@@ -142,11 +292,10 @@ bool is_regular(const char *path) {
     return rg;
 }
 
-/*
- * is_executable
+
+/* is_executable
  * Uses access(2) with X_OK to check executability for the current user.
- * Note: doesn't confirm file type; combine with is_regular when needed.
- */
+ * Note: doesn't confirm file type; combine with is_regular when needed.*/
 bool is_executable(const char *path) {
     LOG(LOG_LEVEL_INFO, "ENTER is_executable(\"%s\")", path ? path : "(null)");
     bool ex = (access(path, X_OK) == 0);
@@ -154,9 +303,8 @@ bool is_executable(const char *path) {
     return ex;
 }
 
-/*
- * PATH lookup result codes to disambiguate outcomes without forking.
- */
+
+/* PATH lookup result codes to disambiguate outcomes without forking.  */
 enum path_lookup {
     FOUND_EXEC   = 0,   // Found an executable regular file
     NOT_FOUND    = -1,  // No candidate found anywhere on PATH
@@ -164,8 +312,7 @@ enum path_lookup {
     FOUND_DIR    = -3   // Found a directory named like the command
 };
 
-/*
- * search_path_alloc
+ /* search_path_alloc
  * Resolve a command name (no slash) against PATH, trying each segment.
  *
  * On success (FOUND_EXEC):
@@ -177,13 +324,8 @@ enum path_lookup {
  * - Empty PATH segment means current directory; we render "./cmd" in that case.
  * - We prefer the first executable regular file we encounter.
  * - If we encounter only non-exec files or directories named like the cmd,
- *   we remember that to return a more precise error (126 vs 127).
- */
-
+ *   we remember that to return a more precise error (126 vs 127). */
  // INTEGRATE WITH DEBUG!
-  // INTEGRATE WITH DEBUG!
-   // INTEGRATE WITH DEBUG!
-    // INTEGRATE WITH DEBUG!
  int search_path_alloc(const char *cmd, char **outp) {
     const char *path = getenv("PATH");
     if (!path || !*path) return NOT_FOUND;
@@ -224,11 +366,9 @@ enum path_lookup {
     return NOT_FOUND;
 }
 
-/*
- * print_exec_error
+ /* print_exec_error
  * Map common errno values from a failed execve to user-friendly, shell-like errors.
- * This keeps output consistent and avoids raw perror prefixes.
- */
+ * This keeps output consistent and avoids raw perror prefixes.*/
  void print_exec_error(const char *what, int err) {
     switch (err) {
         case EACCES:
@@ -321,13 +461,10 @@ char ***parse_pipeline(const char *input, int *num_cmds) {
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
 typedef int pipe_pair_t[2];
-/*
- * create_pipes
- * -------------
+/* create_pipes
  * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
  * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
- * On failure closes any fds opened so far, frees the array, and returns NULL.
- */
+ * On failure closes any fds opened so far, frees the array, and returns NULL. */
 static pipe_pair_t *create_pipes(int num_cmds) {
     int count = num_cmds - 1;
     if (count <= 0) {
@@ -340,34 +477,33 @@ static pipe_pair_t *create_pipes(int num_cmds) {
     }
 
     for (int i = 0; i < count; ++i) {
-#if defined(HAVE_PIPE2)
+    #if defined(HAVE_PIPE2)
         if (pipe2(pipes[i], O_CLOEXEC) < 0) {
-#else
-        if (pipe(pipes[i]) < 0) {
-#endif
-            // tear down what we built so far
-            for (int j = 0; j < i; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+    #else
+            if (pipe(pipes[i]) < 0) {
+    #endif
+                // tear down what we built so far
+                for (int j = 0; j < i; ++j) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+                free(pipes);
+                return NULL;
             }
-            free(pipes);
-            return NULL;
-        }
-#ifndef HAVE_PIPE2
-        if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
-            fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
-            for (int j = 0; j <= i; ++j) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+    #ifndef HAVE_PIPE2
+            if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
+                fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
+                for (int j = 0; j <= i; ++j) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+                free(pipes);
+                return NULL;
             }
-            free(pipes);
-            return NULL;
+    #endif
         }
-#endif
-    }
-
     return pipes;
-}
+    } }
 
 
 //=====================================EXEC_CHILD================================================
@@ -546,7 +682,7 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
 
 
 /* ================= Refactored launch_pipeline ================= */
-       int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
+int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int i, status = 0, last_exit = 0;
     pid_t pgid = 0;
     shell->pipeline_pgid = 0; // Reset pipeline PGID
@@ -742,6 +878,7 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
     shell->pipeline_pgid = 0;
     return ret; // Return final status
 }
+
 /*=================================process_input_segments=====================================
 processes expanded input, splitting at semicolons for */
 void process_input_segments(ShellContext *shell, const char *expanded_input) {
