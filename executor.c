@@ -245,12 +245,12 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
             if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
             continue;
         }
-
+        LOG(LOG_LEVEL_INFO, "line 248 check");
         /* Unsupported/positional/ lone '$' -> emit literal '$' and reprocess next char */
         if (!append_ch(&out, &cap, &dst, '$')) goto oom;
         /* do not advance src here; next loop will handle current char */
     }
-
+    LOG(LOG_LEVEL_INFO, "line 253 check");
     *dst = '\0';
     return out;
 
