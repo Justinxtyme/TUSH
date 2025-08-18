@@ -37,6 +37,7 @@
 #include "shell.h"
 #include "jobs.h"
 #include "input.h"
+#include "var.h"
 #include <errno.h>
 #include <termios.h>    
 #include <limits.h>
