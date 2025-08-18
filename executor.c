@@ -161,9 +161,10 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
 
     if (!ensure_cap(&out, &cap, 64, &dst)) return NULL;
     *dst = '\0';
-
+    LOG(LOG_LEVEL_INFO, "164");
     const char *src = input;
     while (*src) {
+        LOG(LOG_LEVEL_INFO, "while loop start");
         /* Escaped dollar: \$  -> emit literal '$' (drop backslash) */
         if (src[0] == '\\' && src[1] == '$') {
             if (!append_ch(&out, &cap, &dst, '$')) goto oom;
