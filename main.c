@@ -71,6 +71,7 @@ int main() {
         }
         if (shell.input[0] != '\0') { 
             // Add to persistent + mirror to readline
+            LOG(LOG_LEVEL_INFO, "logging: %s", shell.input);
             HistoryAddResult hr = history_add(&shell.history, shell.input);
             (void)hr; // if unused
         }        
