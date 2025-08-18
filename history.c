@@ -214,9 +214,10 @@ HistoryAddResult history_add(History *h, const char *line) {
     if (!h || !line) { errno = EINVAL; return res; }
 
     char *work = xstrdup(line);
+    LOG(LOG_LEVEL_INFO, "duping %s", line);
     if (!work) return res;
     if (h->flags & HISTORY_TRIM_TRAILING) rtrim_spaces(work);
-
+    LOG(LOG_LEVEL_INFO, "duping %s", line);
     if (should_ignore(h, work)) { free(work); return res; }
 
     if (ensure_cap(h, h->len + 1) != 0) { free(work); return res; }
