@@ -247,7 +247,7 @@ bool vart_unset(VarTable *t, const char *name) {
     LOG(LOG_LEVEL_INFO, "setbucket success");
     //  Use a pointer-to-pointer to easily unlink from a singly linked list.
     Var **pp = &t->buckets[idx]; // pointer-to-pointer for unlinking
-    LOG(LOG_LEVEL_INFO, "p2p pass");
+    LOG(LOG_LEVEL_INFO, "p2p pass: %llu", idx);
     //  Traverse the list, keeping pp pointing to the current next field.
     for (Var *v = *pp; v; v = v->next) {
         LOG(LOG_LEVEL_INFO, "checking for match");
