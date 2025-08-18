@@ -697,7 +697,7 @@ static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_
 }
 
 /* Child-side setup: PGID, dup2 pipes, close FDs, reset signals, exec. */
-static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) { 
+static void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) { 
     /* Process group: leader or join existing group */
     if (leader_pgid == 0) {
         setpgid(0, 0);
@@ -727,7 +727,7 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
 
     /* Reset signals and exec */
     setup_child_signals();
-    exec_child(ctx, cmd);
+    exec_child(shell, cmd);
     _exit(127);  /* defensive */
 }
 
@@ -754,7 +754,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         if (pid == 0) {
             setpgid(0, 0);               // Create new process group
             setup_child_signals();      // Reset signal handlers
-            exec_child(ctx, args);           // Exec external command
+            exec_child(shell, args);           // Exec external command
             _exit(127);                 // Failsafe exit if exec fails
         }
 

@@ -48,5 +48,5 @@ bool vart_unexport(VarTable *t, const char *name);
 
 // Helpers
 char **vart_build_envp(const VarTable *t); // malloc'd NULL-terminated array; caller frees
-
+void vart_free_envp(char **envp);
 #endif // var.h

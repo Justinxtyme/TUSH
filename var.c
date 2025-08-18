@@ -70,7 +70,6 @@ bool vart_init(VarTable *t, size_t initial_buckets) {
 }
 
 //  Helper to free a Var and its owned name/value strings safely.
- // Free individual Var struct and its strings
 //  Static internal because only used within this file.
 static void free_var(Var *v) {
     //  Accept NULL and do nothing to simplify callers.
@@ -84,7 +83,6 @@ static void free_var(Var *v) {
 }
 
 //  Tear down an entire VarTable: free all nodes in all buckets, then the bucket array.
- // Destroy entire VarTable — free all Vars and bucket array
 //  Safe to call on a partially initialized or already-destroyed table.
 void vart_destroy(VarTable *t) {
     //  If t is NULL or buckets is NULL, there's nothing to free.
@@ -379,6 +377,14 @@ char **vart_build_envp(const VarTable *t) {
     //  Return the newly built environment pointer array to the caller.
     return envp;
 }
+
+void vart_free_envp(char **envp) {
+    if (!envp) return;
+    for (char **p = envp; *p; ++p) free(*p);
+    free(envp);
+}
+
+
 
 bool is_var_assignment(const char *s) {
     const char *eq = strchr(s, '=');
