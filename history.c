@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
+#include "debug.h"
 //#include <readline/history.h>
 
 #pragma region small_helpers
@@ -37,6 +38,7 @@ const HistEntry* get_history(const History *h, size_t idx) {
 }
 
 static int ensure_cap(History *h, size_t need) {
+    LOG(LOG_LEVEL_INFO, "need: %llu", need);
     if (need <= h->cap) return 0;
     size_t new_cap = h->cap ? h->cap * 2 : 128;
     while (new_cap < need) new_cap *= 2;
