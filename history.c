@@ -224,20 +224,23 @@ HistoryAddResult history_add(History *h, const char *line) {
     LOG(LOG_LEVEL_INFO, "cap passed");
 
     HistEntry *e = &h->v[h->len++];
+    LOG(LOG_LEVEL_INFO, "histentry *e");
     e->id = h->next_id++;
     e->when = time(NULL);
     e->status = -1;
     e->line = work;
-
+    LOG(LOG_LEVEL_INFO, "e->line=work");
     // Mirror into readline memory history
     // Caller must include <readline/history.h> in compilation unit using this function.
     extern void add_history(const char *); // avoid including in header
     add_history(e->line);
+    LOG(LOG_LEVEL_INFO, "add_history236 success");
     res.id = e->id;
     res.added_to_readline = 1;
 
     // Enforce cap immediately
     history_stifle(h, h->max);
+    LOG(LOG_LEVEL_INFO, "returning %s", res);
     return res;
 }
 
