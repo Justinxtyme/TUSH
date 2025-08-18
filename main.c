@@ -31,7 +31,7 @@ int main() {
         exit(1);
     }
 
-    if (!vart_init(&shell.vars, 64)) { // initialize var tables 
+    if (!vart_init(shell.vars, 64)) { // initialize var tables 
     LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
     exit(EXIT_FAILURE);
     }
