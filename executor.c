@@ -144,6 +144,7 @@ static inline int append_ch(char **buf, size_t *cap, char **cursor, char c) {
  * Returns malloc'd string (caller frees) or NULL on OOM/error.
  */
 char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars) {
+    LOG(LOG_LEVEL_INFO, "expanding");
     if (!input) return NULL;
 
     char exit_str[16];
@@ -153,7 +154,7 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
         /* snprintf would have truncated — treat as error to avoid partial data */
         return NULL;
     }
-
+    LOG(LOG_LEVEL_INFO, "stirng=%s", exit_str);
     char *out = NULL;
     size_t cap = 0;
     char *dst = NULL;
