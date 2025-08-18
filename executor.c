@@ -105,13 +105,14 @@ char *expand_variables(const char *input, int last_exit) {
 
 
 /* Growable buffer helpers */
-static int ensure_cap(char **buf, size_t *cap, size_t need, char **cursor) {
+static int ensure_cap(char **buf, size_t *cap, size_t min_needed, char **cursor) {
     size_t used = (size_t)(*cursor - *buf);
-    if (need <= *cap) return 1;
+    if (min_needed <= *cap) return 1;
     size_t new_cap = *cap ? *cap : 64;
-    while (new_cap < need) {
-        new_cap = new_cap < (SIZE_MAX / 2) ? new_cap * 2 : SIZE_MAX;
-        if (new_cap == SIZE_MAX && new_cap < need) return 0;
+    while (new_cap < min_needed) {
+        if (new_cap > SIZE_MAX / 2) new_cap = SIZE_MAX;
+        else new_cap *= 2;
+        if (new_cap < min_needed) return 0;
     }
     char *nbuf = realloc(*buf, new_cap);
     if (!nbuf) return 0;
@@ -123,14 +124,14 @@ static int ensure_cap(char **buf, size_t *cap, size_t need, char **cursor) {
 
 static int append_mem(char **buf, size_t *cap, char **cursor, const void *src, size_t n) {
     size_t used = (size_t)(*cursor - *buf);
-    if (!ensure_cap(buf, cap, used + n + 1, cursor)) return 0; // +1 for NUL safety
-    memcpy(*cursor, src, n);
+    if (!ensure_cap(buf, cap, used + n + 1, cursor)) return 0;
+    if (n) memcpy(*cursor, src, n);
     *cursor += n;
     **cursor = '\0';
     return 1;
 }
 
-static int append_ch(char **buf, size_t *cap, char **cursor, char c) {
+static inline int append_ch(char **buf, size_t *cap, char **cursor, char c) {
     return append_mem(buf, cap, cursor, &c, 1);
 }
 /* ... keep your ensure_cap/append_mem/append_ch helpers above ... */
