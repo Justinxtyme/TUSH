@@ -465,7 +465,7 @@ typedef int pipe_pair_t[2];
  * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
  * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
  * On failure closes any fds opened so far, frees the array, and returns NULL. */
-static pipe_pair_t *create_pipes(int num_cmds) {
+/*static pipe_pair_t *create_pipes(int num_cmds) {
     int count = num_cmds - 1;
     if (count <= 0) {
         return NULL;
@@ -502,8 +502,53 @@ static pipe_pair_t *create_pipes(int num_cmds) {
             }
     #endif
         }
+    return pipes;     
+    }
+*/
+
+static pipe_pair_t *create_pipes(int num_cmds) {
+    int count = num_cmds - 1;
+    if (count <= 0) {
+        return NULL;
+    }
+
+    pipe_pair_t *pipes = calloc(count, sizeof(pipe_pair_t));
+    if (!pipes) {
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+#if defined(HAVE_PIPE2)
+        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
+            for (int j = 0; j < i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#else
+        if (pipe(pipes[i]) < 0) {
+            for (int j = 0; j < i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+        if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
+            for (int j = 0; j <= i; ++j) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            free(pipes);
+            return NULL;
+        }
+#endif
+    }
+
     return pipes;
-    } 
 }
 
 //=====================================EXEC_CHILD================================================
