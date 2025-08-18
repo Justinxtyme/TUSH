@@ -219,8 +219,9 @@ HistoryAddResult history_add(History *h, const char *line) {
     if (h->flags & HISTORY_TRIM_TRAILING) rtrim_spaces(work);
     LOG(LOG_LEVEL_INFO, "duping %s", line);
     if (should_ignore(h, work)) { free(work); return res; }
-
+    LOG(LOG_LEVEL_INFO, "ignoring passed");
     if (ensure_cap(h, h->len + 1) != 0) { free(work); return res; }
+    LOG(LOG_LEVEL_INFO, "cap passed");
 
     HistEntry *e = &h->v[h->len++];
     e->id = h->next_id++;
