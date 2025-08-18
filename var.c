@@ -303,6 +303,9 @@ bool vart_unexport(VarTable *t, const char *name) {
 //  Build a freshly allocated envp[] from the exported variables in the table.
 //  Caller takes ownership of the returned array and each string within it.
 //  Returns NULL on allocation failure or if 't' is NULL.
+//  Build a freshly allocated envp[] from the exported variables in the table.
+//  Caller owns the returned array and each string within it.
+//  Returns NULL on allocation failure or if 't' is NULL.
 char **vart_build_envp(const VarTable *t) {
     //  Validate input; cannot build from a NULL table.
     if (!t) return NULL;
@@ -310,11 +313,16 @@ char **vart_build_envp(const VarTable *t) {
     //  First pass: count how many variables are marked for export.
     //  Iterate across all buckets to count exported entries.
     size_t n = 0;
+    if (t->nbuckets == 0 || !t->buckets) {
+        //  No buckets: return an empty envp array (just the NULL terminator).
+        char **empty = calloc(1, sizeof(char *));
+        return empty; // empty envp is valid for execve
+    }
     for (size_t i = 0; i < t->nbuckets; ++i)
         //  Walk the linked list in bucket i.
         for (Var *v = t->buckets[i]; v; v = v->next)
-            //  Increment count for variables with V_EXPORT set.
-            if (v->flags & V_EXPORT) n++;
+            //  Increment count for variables with V_EXPORT set and non-empty name.
+            if ((v->flags & V_EXPORT) && v->name && v->name[0] != '\0') n++;
 
     //  Allocate envp array of n pointers plus a terminating NULL slot.
     char **envp = calloc(n + 1, sizeof(char*)); // +1 for NULL terminator
@@ -327,12 +335,16 @@ char **vart_build_envp(const VarTable *t) {
     for (size_t i = 0; i < t->nbuckets; ++i) {
         //  Iterate each variable in the current bucket.
         for (Var *v = t->buckets[i]; v; v = v->next) {
-            //  Skip non-exported variables; only include those with V_EXPORT.
+            //  Skip non-exported or invalid-name variables.
             if (!(v->flags & V_EXPORT)) continue;
+            if (!v->name || v->name[0] == '\0') continue;
+
+            //  Treat NULL value as empty string to avoid segfaults.
+            const char *val = v->value ? v->value : "";
 
             //  Compute length: name + '=' + value + terminating NUL.
             size_t namelen = strlen(v->name);
-            size_t vallen  = strlen(v->value);
+            size_t vallen  = strlen(val);
             size_t len = namelen + 1 + vallen + 1; // NAME=VALUE\0
 
             //  Allocate a buffer for the formatted NAME=VALUE string.
@@ -350,7 +362,7 @@ char **vart_build_envp(const VarTable *t) {
             //  Place the '=' separator directly after the name.
             s[namelen] = '=';
             //  Copy the variable value (including terminating NUL) right after '='.
-            memcpy(s + namelen + 1, v->value, vallen + 1);
+            memcpy(s + namelen + 1, val, vallen + 1);
 
             //  Assign the assembled string into the envp array.
             envp[k++] = s;
