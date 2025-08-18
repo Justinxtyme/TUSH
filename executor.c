@@ -846,7 +846,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
 
         if (pids[i] == 0) {
             pid_t leader = (pgid == 0) ? 0 : pgid; // First child becomes group leader
-            setup_pipeline_child(i, num_cmds, pipes, cmds[i], leader); // Setup redirections and exec
+            setup_pipeline_child(shell, i, num_cmds, pipes, cmds[i], leader); // Setup redirections and exec
         } else {
             if (pgid == 0) {
                 pgid = pids[i]; // First child sets PGID
