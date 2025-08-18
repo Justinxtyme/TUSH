@@ -949,6 +949,30 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             shell->running = 0; // Signal shell to stop running
             break;              // Exit the loop immediately
         }
+        
+        //unset variables 
+        if (strcmp(cmds[0][0], "unset") == 0) {
+            if (num_cmds > 1) {
+                fprintf(stderr, "%s: cannot be used in a pipeline\n", cmds[0][0]);
+                shell.last_status = 1;
+                continue;
+            } 
+            if (!cmds[0][1]) {    // if no argument was given
+                fprintf(stderr, "unset: missing variable name\n"); 
+                shell.last_status = 1; 
+                continue;
+            }
+            for (int i = 1; cmds[0][i]; i++) {
+                if (!vart_unset(shell.vars, cmds[0][i])) {
+                    fprintf(stderr, "unset: failed to unset '%s'\n", cmds[0][i]);
+                    shell.last_status = 1;
+                    continue;
+                }
+            }
+            shell.last_status = 0;
+            continue;
+        }        
+        
         if (is_var_assignment(cmds[0][0])) {
             LOG(LOG_LEVEL_INFO, "initiating variable");
             char *eq = strchr(cmds[0][0], '=');
