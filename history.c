@@ -236,10 +236,13 @@ HistoryAddResult history_add(History *h, const char *line) {
     add_history(e->line);
     LOG(LOG_LEVEL_INFO, "add_history236 success");
     res.id = e->id;
+    LOG(LOG_LEVEL_INFO, "e->id success");
     res.added_to_readline = 1;
+    LOG(LOG_LEVEL_INFO, "readline added");
 
     // Enforce cap immediately
     history_stifle(h, h->max);
+    LOG(LOG_LEVEL_INFO, "history_stifle pass");
     LOG(LOG_LEVEL_INFO, "returning %s", res);
     return res;
 }
