@@ -145,7 +145,6 @@ static inline int append_ch(char **buf, size_t *cap, char **cursor, char c) {
  * Returns malloc'd string (caller frees) or NULL on OOM/error.
  */
 char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars) {
-    LOG(LOG_LEVEL_INFO, "expanding");
     if (!input) return NULL;
 
     char exit_str[16];
@@ -155,17 +154,15 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
         /* snprintf would have truncated — treat as error to avoid partial data */
         return NULL;
     }
-    LOG(LOG_LEVEL_INFO, "stirng=%s", exit_str);
+    LOG(LOG_LEVEL_INFO, "string=%s", exit_str);
     char *out = NULL;
     size_t cap = 0;
     char *dst = NULL;
 
     if (!ensure_cap(&out, &cap, 64, &dst)) return NULL;
     *dst = '\0';
-    LOG(LOG_LEVEL_INFO, "164");
     const char *src = input;
     while (*src) {
-        LOG(LOG_LEVEL_INFO, "while loop start");
         /* Escaped dollar: \$  -> emit literal '$' (drop backslash) */
         if (src[0] == '\\' && src[1] == '$') {
             if (!append_ch(&out, &cap, &dst, '$')) goto oom;
@@ -251,7 +248,6 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
         if (!append_ch(&out, &cap, &dst, '$')) goto oom;
         /* do not advance src here; next loop will handle current char */
     }
-    LOG(LOG_LEVEL_INFO, "line 253 check");
     *dst = '\0';
     LOG(LOG_LEVEL_INFO, "returning %s", out);
     return out;
@@ -269,9 +265,9 @@ extern char **environ;  // Environment passed to execve
  * Used to decide whether argv[0] is a path (./a.out, /bin/ls) or a plain command name (ls). */
 bool has_slash(const char *s) {
     //return s && strchr(s, '/') != NULL;
-    LOG(LOG_LEVEL_INFO, "ENTER has_slash(\"%s\")", s ? s : "(null)");
+    //LOG(LOG_LEVEL_INFO, "ENTER has_slash(\"%s\")", s ? s : "(null)");
     bool found = (s && strchr(s, '/') != NULL);
-    LOG(LOG_LEVEL_INFO, "  has_slash → %s", found ? "true" : "false");
+    //LOG(LOG_LEVEL_INFO, "  has_slash → %s", found ? "true" : "false");
     return found;
 }
 
@@ -280,9 +276,9 @@ bool has_slash(const char *s) {
  * Returns false on stat errors or when not a directory.  */
 bool is_directory(const char *path) {
     struct stat st;
-    LOG(LOG_LEVEL_INFO, "ENTER is_directory(\"%s\")", path ? path : "(null)");
+    //LOG(LOG_LEVEL_INFO, "ENTER is_directory(\"%s\")", path ? path : "(null)");
     bool rd = (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
-    LOG(LOG_LEVEL_INFO, "  is_directory → %s", rd ? "true" : "false");
+    //LOG(LOG_LEVEL_INFO, "  is_directory → %s", rd ? "true" : "false");
     return rd;
 }
 
@@ -291,9 +287,9 @@ bool is_directory(const char *path) {
  * Returns false on stat errors or when not a regular file.  */
 bool is_regular(const char *path) {
     struct stat st;
-    LOG(LOG_LEVEL_INFO, "ENTER is_regular(\"%s\")", path ? path : "(null)");
+    //LOG(LOG_LEVEL_INFO, "ENTER is_regular(\"%s\")", path ? path : "(null)");
     bool rg = (stat(path, &st) == 0 && S_ISREG(st.st_mode));
-    LOG(LOG_LEVEL_INFO, "  is_regular → %s", rg ? "true" : "false");
+    //LOG(LOG_LEVEL_INFO, "  is_regular → %s", rg ? "true" : "false");
     return rg;
 }
 
@@ -302,9 +298,9 @@ bool is_regular(const char *path) {
  * Uses access(2) with X_OK to check executability for the current user.
  * Note: doesn't confirm file type; combine with is_regular when needed.*/
 bool is_executable(const char *path) {
-    LOG(LOG_LEVEL_INFO, "ENTER is_executable(\"%s\")", path ? path : "(null)");
+    //LOG(LOG_LEVEL_INFO, "ENTER is_executable(\"%s\")", path ? path : "(null)");
     bool ex = (access(path, X_OK) == 0);
-    LOG(LOG_LEVEL_INFO, "  is_executable → %s", ex ? "true" : "false");
+    //LOG(LOG_LEVEL_INFO, "  is_executable → %s", ex ? "true" : "false");
     return ex;
 }
 
