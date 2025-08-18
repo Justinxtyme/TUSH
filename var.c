@@ -300,17 +300,16 @@ bool vart_unexport(VarTable *t, const char *name) {
     return true;
 }
 
-//  Construct a freshly allocated envp array from exported variables only.
- // Build environment array (envp) from exported variables
-//  Returns a NULL-terminated array of "NAME=VALUE" strings, or NULL on failure.
+//  Build a freshly allocated envp[] from the exported variables in the table.
+//  Caller takes ownership of the returned array and each string within it.
+//  Returns NULL on allocation failure or if 't' is NULL.
 char **vart_build_envp(const VarTable *t) {
     //  Validate input; cannot build from a NULL table.
     if (!t) return NULL;
 
     //  First pass: count how many variables are marked for export.
-    // Count exported variables
-    size_t n = 0;
     //  Iterate across all buckets to count exported entries.
+    size_t n = 0;
     for (size_t i = 0; i < t->nbuckets; ++i)
         //  Walk the linked list in bucket i.
         for (Var *v = t->buckets[i]; v; v = v->next)
@@ -330,22 +329,37 @@ char **vart_build_envp(const VarTable *t) {
         for (Var *v = t->buckets[i]; v; v = v->next) {
             //  Skip non-exported variables; only include those with V_EXPORT.
             if (!(v->flags & V_EXPORT)) continue;
+
             //  Compute length: name + '=' + value + terminating NUL.
-            size_t len = strlen(v->name) + 1 + strlen(v->value) + 1; // NAME=VALUE\0
+            size_t namelen = strlen(v->name);
+            size_t vallen  = strlen(v->value);
+            size_t len = namelen + 1 + vallen + 1; // NAME=VALUE\0
+
             //  Allocate a buffer for the formatted NAME=VALUE string.
             char *s = malloc(len);
             //  If allocation fails, free any previously allocated strings and the envp array.
             if (!s) {
                 //  Best-effort cleanup of entries that were already created.
-                // best-effort cleanup
                 for (size_t j = 0; j < k; ++j) free(envp[j]); // free each populated "NAME=VALUE"
                 free(envp);                                  // free the envp pointer array
-                return NULL;                                  // propagate failure
+                return NULL;                                 // propagate failure
             }
+
             //  Copy the variable name into the buffer (without the terminating NUL).
-            memcpy(s, v->name, strlen(v->name)); // copy name
+            memcpy(s, v->name, namelen);
             //  Place the '=' separator directly after the name.
-            s[strlen(v->name)] = '=';            // add
+            s[namelen] = '=';
+            //  Copy the variable value (including terminating NUL) right after '='.
+            memcpy(s + namelen + 1, v->value, vallen + 1);
+
+            //  Assign the assembled string into the envp array.
+            envp[k++] = s;
         }
     }
+
+    //  Null-terminate the envp array so exec-family calls know where it ends.
+    envp[k] = NULL;
+
+    //  Return the newly built environment pointer array to the caller.
+    return envp;
 }
