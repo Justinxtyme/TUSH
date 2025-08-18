@@ -1,12 +1,13 @@
 // var.h
-#ifndef VAR_H
-#define VAR_H
-
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-#endif
+#ifndef VAR_H
+#define VAR_H
+
+
+
 
 typedef enum {
     V_NONE     = 0,
@@ -46,3 +47,5 @@ bool vart_unexport(VarTable *t, const char *name);
 
 // Helpers
 char **vart_build_envp(const VarTable *t); // malloc'd NULL-terminated array; caller frees
+
+#endif // var.h
