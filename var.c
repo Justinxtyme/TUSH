@@ -250,12 +250,16 @@ bool vart_unset(VarTable *t, const char *name) {
     LOG(LOG_LEVEL_INFO, "p2p pass");
     //  Traverse the list, keeping pp pointing to the current next field.
     for (Var *v = *pp; v; v = v->next) {
+        LOG(LOG_LEVEL_INFO, "checking for match");
         //  Check for a name match on the current node.
         if (strcmp(v->name, name) == 0) {
             //  Refuse to delete readonly variables.
+            LOG(LOG_LEVEL_INFO, "checking readonly");
             if (v->flags & V_READONLY) return false;
             //  Unlink v by updating the previous next-pointer (or bucket head).
+            LOG(LOG_LEVEL_INFO, "unlinking");
             *pp = v->next; // unlink
+            LOG(LOG_LEVEL_INFO, "unlink success");
             //  Free the removed node and its strings.
             free_var(v);
             //  Decrement the table's element count.
