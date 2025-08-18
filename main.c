@@ -25,7 +25,7 @@
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
 
-    if (!vart_init(&shell.vars, 64)) { // initialize var tables 
+    if (!vart_init(shell.vars, 64)) { // initialize var tables 
     LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
     exit(EXIT_FAILURE);
     }
@@ -82,7 +82,7 @@ int main() {
         }
         LOG(LOG_LEVEL_INFO, "expanding variables");
         // Expand variables like $?
-        char *expanded = expand_variables_ex(shell.input, shell.last_status, &shell.vars);
+        char *expanded = expand_variables_ex(shell.input, shell.last_status, shell.vars);
         LOG(LOG_LEVEL_INFO, "expanded=%s", expanded);
         if (!expanded) {
             perror("expand_variables");
@@ -100,6 +100,6 @@ int main() {
     }
     history_dispose(&shell.history);  // free internal buffers
     //cleanup_readline();
-    vart_destroy(&shell.vars);
+    vart_destroy(shell.vars);
     return 0;
 }
