@@ -309,9 +309,9 @@ bool vart_unexport(VarTable *t, const char *name) {
 //  Returns NULL on allocation failure or if 't' is NULL.
 char **vart_build_envp(const VarTable *t) {
     //  Validate input; cannot build from a NULL table.
-    LOG(LOG_LEVEL_INFO, "Buildinf envp: '%s'", t);
+    LOG(LOG_LEVEL_INFO, "Building envp");
     if (!t) {
-         LOG(LOG_LEVEL_ERR, "NULL TABLE: '%s'", t);
+         LOG(LOG_LEVEL_ERR, "NULL TABLE");
         return NULL;
     }
 
