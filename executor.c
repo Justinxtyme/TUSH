@@ -252,6 +252,7 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
     }
     LOG(LOG_LEVEL_INFO, "line 253 check");
     *dst = '\0';
+    LOG(LOG_LEVEL_INFO, "returning out");
     return out;
 
 oom:

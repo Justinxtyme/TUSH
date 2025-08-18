@@ -83,6 +83,7 @@ int main() {
         LOG(LOG_LEVEL_INFO, "expanding variables");
         // Expand variables like $?
         char *expanded = expand_variables_ex(shell.input, shell.last_status, &shell.vars);
+        LOG(LOG_LEVEL_INFO, "expanded=%s", expanded);
         if (!expanded) {
             perror("expand_variables");
             continue;
