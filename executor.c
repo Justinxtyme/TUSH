@@ -969,7 +969,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
                     continue;
                 }
             }
-            shell.last_status = 0;
+            shell->last_status = 0;
             continue;
         }        
         
