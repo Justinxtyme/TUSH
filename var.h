@@ -20,7 +20,7 @@ typedef struct Var {
     char *name;
     char *value;      // "" means set-but-empty; never NULL after creation
     uint32_t flags;
-    struct Var *next; // bucket chain
+    struct Var *next; // pointer to next bucket head
 } Var;
 
 typedef struct VarTable {

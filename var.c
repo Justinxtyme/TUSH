@@ -46,7 +46,6 @@ static char *xstrdup(const char *s) {
 }
 
 //  Initialize the variable table with at least 16 buckets, rounding up to a power of two.
- // Initialize variable table with at least 16 buckets, rounded to next power-of-two
 //  Returns true on success; false on invalid input or allocation failure.
 bool vart_init(VarTable *t, size_t initial_buckets) {
     //  Validate the output pointer before doing any work.

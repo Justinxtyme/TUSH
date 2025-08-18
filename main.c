@@ -17,14 +17,7 @@
 #include "debug.h"
 #include "signals.h"
 #include <signal.h>
-
-
-#ifdef _WIN32
-    #include <direct.h>
-    #define getcwd _getcwd
-#else
-    #include <unistd.h> //// for POSIX functions like fork, execvp, chdir
-#endif 
+#include <unistd.h>
 
 
 
@@ -88,7 +81,7 @@ int main() {
         }
 
         // Expand variables like $?
-        char *expanded = expand_variables(shell.input, shell.last_status);
+        char *expanded = expand_variables_ex(shell.input, shell.last_status, &shell.vars);
         if (!expanded) {
             perror("expand_variables");
             continue;
