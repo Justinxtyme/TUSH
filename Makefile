@@ -11,7 +11,7 @@ CFLAGS = -Wall -Wextra -g -MMD -MP #-DDEBUG
 
 
 # List of source files
-SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c history.c
+SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c history.c var.c
 #include readline library for input handling
 # This library provides functions for reading input with line editing capabilities
 LDFLAGS = -lreadline
