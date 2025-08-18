@@ -954,6 +954,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             break;              // Exit the loop immediately
         }
         if (is_var_assignment(cmds[0][0])) {
+            LOG(LOG_LEVEL_INFO, "initiating variable");
             char *eq = strchr(cmds[0][0], '=');
             size_t name_len = eq - cmds[0][0];
             char *name = strndup(cmds[0][0], name_len);

@@ -385,12 +385,13 @@ char **vart_build_envp(const VarTable *t) {
 
 bool is_var_assignment(const char *s) {
     const char *eq = strchr(s, '=');
+    LOG(LOG_LEVEL_INFO, "Checking if var assignment");
     if (!eq || eq == s) return false;
 
     // Validate name: [A-Za-z_][A-Za-z0-9_]*
     if (!(s[0] == '_' || isalpha(s[0]))) return false;
     for (const char *p = s + 1; p < eq; ++p)
         if (!(isalnum(*p) || *p == '_')) return false;
-
+    LOG(LOG_LEVEL_INFO, "Detected var assignment");
     return true;
 }
