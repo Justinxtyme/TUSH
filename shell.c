@@ -41,6 +41,6 @@ void setup_shell_job_control(ShellContext *shell) {
     sigaction(SIGQUIT, &sa, NULL);
 }
 
-setup_variable_table(ShellContext *shell) {
+//setup_variable_table(ShellContext *shell) {
     
-}
+//}
