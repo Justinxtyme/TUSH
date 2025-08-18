@@ -557,7 +557,7 @@ static pipe_pair_t *create_pipes(int num_cmds) {
 // args: command arguments, including argv[0] (the command to execute)  
 // Resolve, validate, set signals, execve, and _exit with correct code
 // ==============================================================================================
-static void exec_child(char **args) {
+static void exec_child(ShellContext *ctx, char **args) {
     char *resolved = NULL;
     const char *path_to_exec;
 
@@ -598,10 +598,12 @@ static void exec_child(char **args) {
     //execve(path_to_exec, args, environ);
     char **envp = vart_build_envp(ctx->vars);  // your shell's exported vars
     execve(path_to_exec, args, envp);          // use your envp, not environ
-
+    //if error
     int err = errno;
+    vart_free_envp(envp);
+    if (resolved) free(resolved);
     if (err == ENOEXEC) {
-        fprintf(stderr, "thrash: exec format error: %s\n", path_to_exec);
+        fprintf(stderr, "thrash: exec format error: %s\n", path_to_exec);        
         _exit(126);
     } else if (err == EACCES) {
         fprintf(stderr, "thrash: permission denied: %s\n", path_to_exec);
@@ -725,7 +727,7 @@ static void setup_pipeline_child(int idx, int num_cmds, pipe_pair_t *pipes, char
 
     /* Reset signals and exec */
     setup_child_signals();
-    exec_child(cmd);
+    exec_child(ctx, cmd);
     _exit(127);  /* defensive */
 }
 
@@ -752,7 +754,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         if (pid == 0) {
             setpgid(0, 0);               // Create new process group
             setup_child_signals();      // Reset signal handlers
-            exec_child(args);           // Exec external command
+            exec_child(ctx, args);           // Exec external command
             _exit(127);                 // Failsafe exit if exec fails
         }
 
