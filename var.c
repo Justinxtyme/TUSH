@@ -11,6 +11,7 @@
 //  errno is included for potential future error handling, but not referenced here.
 #include <errno.h>            // errno (not used here but included)
 
+#include "debug.h"
 //  Define a 64-bit FNV-1a hash for fast, well-distributed string hashing.
 //  Inline for performance; static to keep symbol local to this translation unit.
 static inline uint64_t fnv1a64(const char *s) {
@@ -308,7 +309,11 @@ bool vart_unexport(VarTable *t, const char *name) {
 //  Returns NULL on allocation failure or if 't' is NULL.
 char **vart_build_envp(const VarTable *t) {
     //  Validate input; cannot build from a NULL table.
-    if (!t) return NULL;
+    LOG(LOG_LEVEL_INFO, "Buildinf envp: '%s'", VarTable);
+    if (!t) {
+         LOG(LOG_LEVEL_ERR, "NULL TABLE: '%s'", VarTable);
+        return NULL;
+    }
 
     //  First pass: count how many variables are marked for export.
     //  Iterate across all buckets to count exported entries.
