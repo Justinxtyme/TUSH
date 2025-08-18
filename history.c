@@ -243,7 +243,7 @@ HistoryAddResult history_add(History *h, const char *line) {
     // Enforce cap immediately
     history_stifle(h, h->max);
     LOG(LOG_LEVEL_INFO, "history_stifle pass");
-    LOG(LOG_LEVEL_INFO, "returning %s", res);
+    LOG(LOG_LEVEL_INFO, "returning result");
     return res;
 }
 
