@@ -209,6 +209,7 @@ static int should_ignore(const History *h, const char *line) {
 }
 
 HistoryAddResult history_add(History *h, const char *line) {
+    LOG(LOG_LEVEL_INFO, "adding %s", line);
     HistoryAddResult res = {0, 0};
     if (!h || !line) { errno = EINVAL; return res; }
 
