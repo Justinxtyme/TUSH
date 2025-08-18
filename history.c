@@ -217,32 +217,24 @@ HistoryAddResult history_add(History *h, const char *line) {
     LOG(LOG_LEVEL_INFO, "duping %s", line);
     if (!work) return res;
     if (h->flags & HISTORY_TRIM_TRAILING) rtrim_spaces(work);
-    LOG(LOG_LEVEL_INFO, "duping %s", line);
+    LOG(LOG_LEVEL_INFO, "trimming %s", line);
     if (should_ignore(h, work)) { free(work); return res; }
-    LOG(LOG_LEVEL_INFO, "ignoring passed");
     if (ensure_cap(h, h->len + 1) != 0) { free(work); return res; }
-    LOG(LOG_LEVEL_INFO, "cap passed");
 
     HistEntry *e = &h->v[h->len++];
-    LOG(LOG_LEVEL_INFO, "histentry *e");
     e->id = h->next_id++;
     e->when = time(NULL);
     e->status = -1;
     e->line = work;
-    LOG(LOG_LEVEL_INFO, "e->line=work");
     // Mirror into readline memory history
     // Caller must include <readline/history.h> in compilation unit using this function.
     extern void add_history(const char *); // avoid including in header
     add_history(e->line);
-    LOG(LOG_LEVEL_INFO, "add_history236 success");
     res.id = e->id;
-    LOG(LOG_LEVEL_INFO, "e->id success");
     res.added_to_readline = 1;
-    LOG(LOG_LEVEL_INFO, "readline added");
 
     // Enforce cap immediately
     history_stifle(h, h->max);
-    LOG(LOG_LEVEL_INFO, "history_stifle pass");
     LOG(LOG_LEVEL_INFO, "returning result");
     return res;
 }
