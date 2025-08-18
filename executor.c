@@ -257,7 +257,7 @@ oom:
     return NULL;
 }
 
-extern char **environ;  // Environment passed to execve
+//extern char **environ;  // Environment passed to execve
 
 
 /* has_slash
@@ -595,7 +595,10 @@ static void exec_child(char **args) {
     setup_child_signals();
 
     // 4) Exec — on failure, pick proper code and message
-    execve(path_to_exec, args, environ);
+    //execve(path_to_exec, args, environ);
+    char **envp = vart_build_envp(ctx->vars);  // your shell's exported vars
+    execve(path_to_exec, args, envp);          // use your envp, not environ
+
     int err = errno;
     if (err == ENOEXEC) {
         fprintf(stderr, "thrash: exec format error: %s\n", path_to_exec);

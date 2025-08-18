@@ -290,7 +290,7 @@ bool vart_export(VarTable *t, const char *name) {
 }
 
 //  Clear the export flag on an existing variable; no-op if not found.
- // Remove export flag
+//  Remove export flag
 //  Returns true if the variable exists (flag cleared), false if not found.
 bool vart_unexport(VarTable *t, const char *name) {
     //  Look up the variable; table pointer assumed valid by caller.
@@ -305,9 +305,6 @@ bool vart_unexport(VarTable *t, const char *name) {
 
 //  Build a freshly allocated envp[] from the exported variables in the table.
 //  Caller takes ownership of the returned array and each string within it.
-//  Returns NULL on allocation failure or if 't' is NULL.
-//  Build a freshly allocated envp[] from the exported variables in the table.
-//  Caller owns the returned array and each string within it.
 //  Returns NULL on allocation failure or if 't' is NULL.
 char **vart_build_envp(const VarTable *t) {
     //  Validate input; cannot build from a NULL table.
