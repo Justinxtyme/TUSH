@@ -241,13 +241,13 @@ bool vart_set(VarTable *t, const char *name, const char *value, uint32_t set_fla
 bool vart_unset(VarTable *t, const char *name) {
     //  Validate inputs.
     if (!t || !name) return false;
-    LOG(LOG_LEVEL_INFO, "set bucket_idx")
+    LOG(LOG_LEVEL_INFO, "set bucket_idx");
     //  Compute the bucket containing the target (if present).
     size_t idx = bucket_idx(t, name);
-    LOG(LOG_LEVEL_INFO, "setbucket success")
+    LOG(LOG_LEVEL_INFO, "setbucket success");
     //  Use a pointer-to-pointer to easily unlink from a singly linked list.
     Var **pp = &t->buckets[idx]; // pointer-to-pointer for unlinking
-    LOG(LOG_LEVEL_INFO, "p2p pass")
+    LOG(LOG_LEVEL_INFO, "p2p pass");
     //  Traverse the list, keeping pp pointing to the current next field.
     for (Var *v = *pp; v; v = v->next) {
         //  Check for a name match on the current node.
