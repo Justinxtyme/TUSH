@@ -30,7 +30,7 @@ void print_exec_error(const char *what, int err);
 
 char *expand_variables(const char *input, int last_exit);
 
-char *expand_variables(const char *input, int last_exit);
+char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars)
 
 void free_segments(char **segments);
 
