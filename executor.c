@@ -674,6 +674,7 @@ static void try_setpgid(pid_t pid, pid_t pgid) {
             pid, pgid, strerror(errno));
 }
 
+/// is this needed anymore? i dont think so 
 static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_cmds) {                                      
     if (!argv || !argv[0]) return 0;
 
@@ -969,6 +970,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             }
             LOG(LOG_LEVEL_INFO, "Unsetting variable(s)");
             for (int i = 1; cmds[0][i]; i++) {
+                LOG(LOG_LEVEL_INFO, "checking variable")
                 if (!vart_unset(shell->vars, cmds[0][i])) {
                     fprintf(stderr, "unset: failed to unset '%s'\n", cmds[0][i]);
                     shell->last_status = 1;
