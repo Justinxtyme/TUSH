@@ -75,12 +75,12 @@ int main() {
             HistoryAddResult hr = history_add(&shell.history, shell.input);
             (void)hr; // if unused
         }        
-        
+        LOG(LOG_LEVEL_INFO, "made to $?check");
         if (strcmp(shell.input, "$?") == 0) {
             printf("%d\n", shell.last_status);
             break;
         }
-
+        LOG(LOG_LEVEL_INFO, "expanding variables");
         // Expand variables like $?
         char *expanded = expand_variables_ex(shell.input, shell.last_status, &shell.vars);
         if (!expanded) {
