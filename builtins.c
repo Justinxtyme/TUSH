@@ -15,10 +15,10 @@ int handle_cd(char **args) {
     }
     return 0;
 }
-
+/*
 int handle_exit(char **args) {
     return SHELL_EXIT;
-}
+}*/
 
 
 // add builtins as needed
