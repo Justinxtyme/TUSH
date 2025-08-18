@@ -953,6 +953,17 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             shell->running = 0; // Signal shell to stop running
             break;              // Exit the loop immediately
         }
+        if (is_var_assignment(cmds[0][0])) {
+            char *eq = strchr(cmds[0][0], '=');
+            size_t name_len = eq - cmds[0][0];
+            char *name = strndup(cmds[0][0], name_len);
+            char *value = strdup(eq + 1);
+            vart_set(shell->vars, name, value, 0); // or V_EXPORT if needed
+            free(name);
+            free(value);
+            continue; // skip launching pipeline
+        }
+
 
         LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);
 

@@ -38,6 +38,7 @@ void vart_destroy(VarTable *t);
 Var *vart_get(const VarTable *t, const char *name);
 
 // Set/unset
+bool is_var_assignment(const char *s);
 bool vart_set(VarTable *t, const char *name, const char *value, uint32_t set_flags);
 bool vart_unset(VarTable *t, const char *name);
 

@@ -380,3 +380,15 @@ char **vart_build_envp(const VarTable *t) {
     //  Return the newly built environment pointer array to the caller.
     return envp;
 }
+
+bool is_var_assignment(const char *s) {
+    const char *eq = strchr(s, '=');
+    if (!eq || eq == s) return false;
+
+    // Validate name: [A-Za-z_][A-Za-z0-9_]*
+    if (!(s[0] == '_' || isalpha(s[0]))) return false;
+    for (const char *p = s + 1; p < eq; ++p)
+        if (!(isalnum(*p) || *p == '_')) return false;
+
+    return true;
+}
