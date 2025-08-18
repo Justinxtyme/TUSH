@@ -30,6 +30,8 @@ void print_exec_error(const char *what, int err);
 
 char *expand_variables(const char *input, int last_exit);
 
+char *expand_variables(const char *input, int last_exit);
+
 void free_segments(char **segments);
 
 void process_input_segments(ShellContext *shell, const char *expanded_input);
