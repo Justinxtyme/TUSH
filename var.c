@@ -12,6 +12,8 @@
 #include <errno.h>            // errno (not used here but included)
 
 #include "debug.h"
+
+#include <ctype.h>
 //  Define a 64-bit FNV-1a hash for fast, well-distributed string hashing.
 //  Inline for performance; static to keep symbol local to this translation unit.
 static inline uint64_t fnv1a64(const char *s) {
