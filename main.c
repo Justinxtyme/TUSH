@@ -24,8 +24,14 @@
 // --- Main Loop ---
 int main() {
     ShellContext shell = { .running = 1 }; // Initialize shell context with running flag set to 1
+    
+    shell.vars = malloc(sizeof(VarTable));
+    if (!shell.vars) {
+        fprintf(stderr, "Failed to allocate VarTable\n");
+        exit(1);
+    }
 
-    if (!vart_init(shell.vars, 64)) { // initialize var tables 
+    if (!vart_init(&shell.vars, 64)) { // initialize var tables 
     LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
     exit(EXIT_FAILURE);
     }
