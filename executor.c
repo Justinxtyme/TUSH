@@ -962,6 +962,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
                 shell->last_status = 1; 
                 continue;
             }
+            LOG(LOG_LEVEL_INFO, "Unsetting variable(s)");
             for (int i = 1; cmds[0][i]; i++) {
                 if (!vart_unset(shell->vars, cmds[0][i])) {
                     fprintf(stderr, "unset: failed to unset '%s'\n", cmds[0][i]);
