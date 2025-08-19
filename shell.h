@@ -8,7 +8,6 @@
 #include "var.h" // Include variable table definitions
  #ifndef SHELL_H
 #define SHELL_H
-
 #define INPUT_SIZE 1024
 
 typedef struct {

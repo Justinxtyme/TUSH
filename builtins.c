@@ -23,5 +23,5 @@ int handle_exit(char **args) {
 
 // add builtins as needed
 bool is_builtin(const char *cmd) {
-    return strcmp(cmd, "cd") == 0 || strcmp(cmd, "exit") == 0 || strcomp(cmd, "export") == 0;;
+    return strcmp(cmd, "cd") == 0 || strcmp(cmd, "exit") == 0 || strcmp(cmd, "export") == 0;;
 }

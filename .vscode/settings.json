@@ -68,7 +68,9 @@
     "fcntl.h": "c",
     "stdbool.h": "c",
     "executor.h": "c",
-    "stdint.h": "c"
+    "stdint.h": "c",
+    "compare": "c",
+    "jobs.h": "c"
   },
   "makefile.configureOnOpen": true,
   "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"

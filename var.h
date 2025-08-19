@@ -5,7 +5,7 @@
 
 #ifndef VAR_H
 #define VAR_H
-
+//#include "shell.h"
 
 
 
@@ -49,4 +49,5 @@ bool vart_unexport(VarTable *t, const char *name);
 // Helpers
 char **vart_build_envp(const VarTable *t); // malloc'd NULL-terminated array; caller frees
 void vart_free_envp(char **envp);
+//void init_var_table(ShellContext *shell);
 #endif // var.h

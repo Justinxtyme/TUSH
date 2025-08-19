@@ -34,8 +34,8 @@ int main() {
     if (!vart_init(shell.vars, 64)) { // initialize var tables 
     LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
     exit(EXIT_FAILURE);
-    }
-    
+    } 
+    //init_var_table(&shell);
     setup_parent_signals(); 
     setup_shell_job_control(&shell);
     initialize_readline();

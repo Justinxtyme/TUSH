@@ -62,52 +62,11 @@
 //#define bool _Bool
 
 // Program prefix for error messages. Consider wiring this to your prompt name.
-static const char *progname = "thrash"; //
-
-char *expand_variables(const char *input, int last_exit) {
-    // If input is NULL, return NULL immediately
-    if (!input) return NULL;
-
-    const char *needle = "$?"; // Target variable to expand (represents last exit status)
-    char *pos = strstr(input, needle); 
-    if (!pos) { 
-        // If "$?" is not found in input, return a duplicate of the original string
-        return strdup(input);
-    }
-
-    // Convert last_exit integer to string (e.g., 1 → "1")
-    char exit_str[16];
-    snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
-
-    // Calculate lengths for allocation
-    size_t input_len = strlen(input);
-    size_t result_len = input_len + 16;  // Add extra space for expansion (safe bufffer)
-    char *result = calloc(1, result_len); // Allocate zero-initialized memory
-    if (!result) return NULL; // Bail out if allocation fails
-
-    const char *src = input; // Source pointer for reading input
-    char *dst = result;      // Destination pointer for writing output
-
-    // Iterate through input string
-    while (*src) {
-        // If we find "$?" pattern
-        if (src[0] == '$' && src[1] == '?') {
-            strcpy(dst, exit_str);        // Copy exit status string to result
-            dst += strlen(exit_str);      // Advance destination pointer
-            src += 2;                     // Skip over "$?" in source
-        } else {
-            *dst++ = *src++;              // Copy character as-is
-        }
-    }
-
-    *dst = '\0'; // Null-terminate the result string
-    return result; // Return the expanded string
-}
-
+static const char *progname = "thrash"; 
 
 /* Growable buffer helpers */
 static int ensure_cap(char **buf, size_t *cap, size_t min_needed, char **cursor) {
-    size_t used = (size_t)(*cursor - *buf);
+    size_t used = (size_t)(*cursor - *buf); 
     if (min_needed <= *cap) return 1;
     size_t new_cap = *cap ? *cap : 64;
     while (new_cap < min_needed) {
@@ -151,7 +110,7 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
     int exit_len = snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
     if (exit_len < 0) return NULL;
     if (exit_len >= (int)sizeof(exit_str)) {
-        /* snprintf would have truncated — treat as error to avoid partial data */
+        /* s truncated — treat as error to avoid partial data */
         return NULL;
     }
     LOG(LOG_LEVEL_INFO, "string=%s", exit_str);
@@ -243,7 +202,7 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
             if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
             continue;
         }
-        LOG(LOG_LEVEL_INFO, "line 248 check");
+        LOG(LOG_LEVEL_INFO, "unsupported: %s", c);
         /* Unsupported/positional/ lone '$' -> emit literal '$' and reprocess next char */
         if (!append_ch(&out, &cap, &dst, '$')) goto oom;
         /* do not advance src here; next loop will handle current char */
@@ -466,47 +425,6 @@ typedef int pipe_pair_t[2];
  * Allocate and initialize num_cmds-1 pipes for a pipeline of num_cmds commands.
  * Returns a calloc’d array of pipe_pair_t, each with CLOEXEC set.
  * On failure closes any fds opened so far, frees the array, and returns NULL. */
-/*static pipe_pair_t *create_pipes(int num_cmds) {
-    int count = num_cmds - 1;
-    if (count <= 0) {
-        return NULL;
-    }
-
-    pipe_pair_t *pipes = calloc(count, sizeof(pipe_pair_t));
-    if (!pipes) {
-        return NULL;
-    }
-
-    for (int i = 0; i < count; ++i) {
-    #if defined(HAVE_PIPE2)
-        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
-    #else
-            if (pipe(pipes[i]) < 0) {
-    #endif
-                // tear down what we built so far
-                for (int j = 0; j < i; ++j) {
-                    close(pipes[j][0]);
-                    close(pipes[j][1]);
-                }
-                free(pipes);
-                return NULL;
-            }
-    #ifndef HAVE_PIPE2
-            if (fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
-                fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0) {
-                for (int j = 0; j <= i; ++j) {
-                    close(pipes[j][0]);
-                    close(pipes[j][1]);
-                }
-                free(pipes);
-                return NULL;
-            }
-    #endif
-        }
-    return pipes;     
-    }
-*/
-
 static pipe_pair_t *create_pipes(int num_cmds) {
     int count = num_cmds - 1;
     if (count <= 0) {
@@ -620,9 +538,10 @@ static void exec_child(ShellContext *ctx, char **args) {
 
 static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) { 
     // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
-    if (tcsetpgrp(shell->tty_fd, pgid) < 0) {
+    if (tcsetpgrp(shell->tty_fd, pgid) < 0) { 
         // Don’t spam; log if you have a debug flag
-        // perror("tcsetpgrp(give)");
+        LOG(LOG_LEVEL_INFO, "tcsetpgrp(give): %s\n", strerror(errno));
+
     }
 }
 
@@ -790,7 +709,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         return last_exit; // Return final exit status
     }
 
-    /* Multi-stage pipeline */
+    /*   Multi-stage pipeline */
     pid_t *pids = calloc(num_cmds, sizeof(pid_t)); // Allocate PID array
     if (!pids) {
         perror("calloc pids");
@@ -831,6 +750,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         pids[i] = fork(); // Fork pipeline stage
+      
         if (pids[i] < 0) {
             // Log args for debugging
             if (cmds[i]) {
@@ -844,7 +764,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
             shell->pipeline_pgid = 0;
             return 1;
         }
-
+        // set up leader and join all to  pgid
         if (pids[i] == 0) {
             pid_t leader = (pgid == 0) ? 0 : pgid; // First child becomes group leader
             setup_pipeline_child(shell, i, num_cmds, pipes, cmds[i], leader); // Setup redirections and exec
@@ -866,7 +786,10 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     for (int k = 0; k < num_cmds; ++k) {
         if (pids[k] > 0) {
             ++forked;
+            LOG(LOG_LEVEL_INFO, "child %d successfully forked", k + 1);
             last_pid = pids[k]; // Track last valid PID
+        } else {
+            LOG(LOG_LEVEL_INFO, "child %d failed fork", k + 1);
         }
     }
     int live = forked;
@@ -988,6 +911,10 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             char *name = strndup(cmds[0][0], name_len);
             char *value = strdup(eq + 1);
             vart_set(shell->vars, name, value, 0); // or V_EXPORT if needed
+            LOG(LOG_LEVEL_INFO, "%s set to %s", name, value);
+            if (cmds[1]) {
+                fprintf(stderr, "Setting variable kills pipeline. Killed before (%s %s)\n", cmds[1][0], cmds[1][1]);
+            }
             free(name);
             free(value);
             continue; // skip launching pipeline

@@ -14,6 +14,7 @@
 #include "debug.h"
 
 #include <ctype.h>
+
 //  Define a 64-bit FNV-1a hash for fast, well-distributed string hashing.
 //  Inline for performance; static to keep symbol local to this translation unit.
 static inline uint64_t fnv1a64(const char *s) {
@@ -38,7 +39,6 @@ static inline size_t bucket_idx(const VarTable *t, const char *name) {
     return (size_t)(fnv1a64(name) & (t->nbuckets - 1)); // mask to bucket range
 }
 
-//  Wrapper around strdup that tolerates NULL by duplicating an empty string.
  // Safe strdup wrapper — handles NULL input by duplicating empty string
 //  Static internal helper; returns heap-allocated copy.
 static char *xstrdup(const char *s) {
@@ -274,8 +274,7 @@ bool vart_unset(VarTable *t, const char *name) {
     return false;
 }
 
-//  Mark a variable as exported; create it empty if it doesn't exist (bash-like behavior).
- // Mark variable as exported — creates empty var if not found
+//  Mark a variable as exported; create it empty if it doesn't exist (bash-like behavior)
 //  Returns true on success; false on invalid input or allocation failure in creation path.
 bool vart_export(VarTable *t, const char *name) {
     //  Validate inputs.
@@ -295,7 +294,6 @@ bool vart_export(VarTable *t, const char *name) {
 }
 
 //  Clear the export flag on an existing variable; no-op if not found.
-//  Remove export flag
 //  Returns true if the variable exists (flag cleared), false if not found.
 bool vart_unexport(VarTable *t, const char *name) {
     //  Look up the variable; table pointer assumed valid by caller.
@@ -405,3 +403,19 @@ bool is_var_assignment(const char *s) {
     LOG(LOG_LEVEL_INFO, "Detected var assignment");
     return true;
 }
+
+/* VAR TABLE INITIATION IN MAIN SHELL INIT
+
+void init_var_table(ShellContext *shell) {
+    shell->vars = malloc(sizeof(VarTable));
+        if (!shell->vars) {
+            fprintf(stderr, "Failed to allocate VarTable\n");
+            exit(1);
+        }
+
+        if (!vart_init(shell->vars, 64)) { // initialize var tables 
+        LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
+        exit(EXIT_FAILURE);
+        }
+    return;
+    }  */
