@@ -37,7 +37,7 @@ const HistEntry* get_history(const History *h, size_t idx) {
     return &h->v[idx];
 }
 
-static int ensure_cap(History *h, size_t need) {
+static int check_cap(History *h, size_t need) {
     LOG(LOG_LEVEL_INFO, "checking need");
     if (need <= h->cap) return 0;
     size_t new_cap = h->cap ? h->cap * 2 : 128;
@@ -149,7 +149,7 @@ int history_load(History *h) {
         char *cmd_unesc = unescape(tab2 + 1);
         if (!cmd_unesc) { free(line); fclose(f); return -1; }
 
-        if (ensure_cap(h, h->len + 1) != 0) { free(cmd_unesc); free(line); fclose(f); return -1; }
+        if (check_cap(h, h->len + 1) != 0) { free(cmd_unesc); free(line); fclose(f); return -1; }
         HistEntry *e = &h->v[h->len++];
         e->id = h->next_id++;
         e->when = (time_t)epoch;
@@ -219,7 +219,7 @@ HistoryAddResult history_add(History *h, const char *line) {
     if (h->flags & HISTORY_TRIM_TRAILING) rtrim_spaces(work);
     LOG(LOG_LEVEL_INFO, "trimming %s", line);
     if (should_ignore(h, work)) { free(work); return res; }
-    if (ensure_cap(h, h->len + 1) != 0) { free(work); return res; }
+    if (check_cap(h, h->len + 1) != 0) { free(work); return res; }
 
     HistEntry *e = &h->v[h->len++];
     e->id = h->next_id++;
