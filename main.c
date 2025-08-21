@@ -1,6 +1,4 @@
-/* this is an attempt to create a simple shell in C, called "THRASH", Totally Unnecessary Shell, Totally Useless Shell, or The Ultimate Shell.
- it will support basic built-in commands like 'cd', 'exit', and 'ls'   
- and other posix commands */
+/* this is an attempt to create a simple shell in C, called "THRASH" */
 
 #include "input.h"
 #include "shell.h" // Include the shell context and function declarations

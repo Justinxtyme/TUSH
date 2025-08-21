@@ -1337,7 +1337,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
             fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id() - 1, segments[i]);
         }
 
-        LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
+        LOG(LOG_LEVEL_INFO, "pipeline exited with %d", status);
         free_command_list(cmds, num_cmds);
     }
 
