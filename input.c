@@ -106,11 +106,12 @@ char **split_on_semicolons(const char *input) {
     size_t len = strlen(input);
     if (len == 0) return NULL; // Empty input yields null output
 
-    // Make a modifiable copy of the input string
+    // Make a modifiable copy of the input string — we will insert NULs here
     char *copy = strdup(input);
     if (!copy) return NULL;
 
     // Allocate space for output segments (+1 for NULL terminator)
+    // Worst case: every character is a delimiter, so len+1 segments
     char **segments = calloc(len + 2, sizeof(char *));
     if (!segments) {
         free(copy);
@@ -118,35 +119,84 @@ char **split_on_semicolons(const char *input) {
     }
 
     int seg_count = 0;
-    char *start = copy;
-    char *p = copy;
-    char quote = '\0';
+    char *start = copy; // Marks the beginning of the current segment
+    char *p = copy;     // Current scan position
+    char quote = '\0';  // Quote state: '\0' means unquoted, otherwise holds quote char
+    int escape = 0;     // Escape state: 1 means next char is literal
 
     while (*p) {
-        if (*p == '\'' || *p == '"') {
-            if (quote == '\0') {
-                quote = *p;
-            } else if (quote == *p) {
-                quote = '\0';
-            }
-        } else if (((*p == ';') || (*p == '\n')) && (quote == '\0')) {
-            if (p > start && *(p - 1) == '\r') *(p - 1) = '\0';
-            *p = '\0';
-            if (*start) {
-                segments[seg_count++] = strdup(start);
-                LOG(LOG_LEVEL_INFO, "[split] segment[%d]: '%s'\n", seg_count - 1, segments[seg_count - 1]);
-            }
-            start = p + 1;
+        if (escape) {
+            /*
+             * Previous char was a backslash, so this char is taken literally.
+             * This bypasses quote toggling and delimiter checks.
+             */
+            escape = 0; // Reset escape after consuming one char
+            ++p;
+            continue;
         }
+
+        if (*p == '\\') {
+            /*
+             * Found a backslash — set escape so the next char is treated literally.
+             * Do not include '\' itself in any special logic.
+             */
+            escape = 1;
+            // Optionally: memmove(p, p+1, strlen(p)); to strip '\' from output
+            ++p;
+            continue;
+        }
+
+        if (*p == '\'' || *p == '"') {
+            /*
+             * Quote handling:
+             * - If unquoted, enter quoted mode using this char as the delimiter.
+             * - If already quoted with the same char, close quote.
+             * Inside quotes, delimiters like ';' are ignored.
+             */
+            if (quote == '\0') {
+                quote = *p; // Enter quoted mode
+            } else if (quote == *p) {
+                quote = '\0'; // Exit quoted mode
+            }
+            ++p;
+            continue;
+        }
+
+        if (((*p == ';') || (*p == '\n')) && (quote == '\0')) {
+            /*
+             * We found a delimiter (semicolon or newline) while NOT in quotes
+             * and NOT escaped (escape is always 0 here because that branch returns early).
+             */
+            if (p > start && *(p - 1) == '\r') {
+                *(p - 1) = '\0'; // Trim carriage return from CRLF endings
+            }
+            *p = '\0'; // Terminate the current segment string
+
+            if (*start) {
+                // Only store non-empty segments
+                segments[seg_count++] = strdup(start);
+                LOG(LOG_LEVEL_INFO,
+                    "[split] segment[%d]: '%s'\n",
+                    seg_count - 1,
+                    segments[seg_count - 1]);
+            }
+
+            start = p + 1; // New segment starts after the delimiter
+            ++p;
+            continue;
+        }
+
+        // Default: just advance to next character
         ++p;
     }
 
-    // Final segment
+    // After loop ends, handle the final segment (if non-empty)
     if (*start) {
         segments[seg_count++] = strdup(start);
     }
 
     segments[seg_count] = NULL; // NULL-terminate the array
+
     free(copy);
     return segments;
 }
