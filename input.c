@@ -38,29 +38,65 @@ void cleanup_readline(void) {
 /* This function reads input from the user using readline, which provides line editing capabilities
  It returns 1 on success and 0 on EOF or error. The input is stored in the ShellContext's input buffer
  It also updates the current working directory in the ShellContext for prompt display */
-int read_input(ShellContext *ctx) { 
-    getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
-    char prompt[512]; //
-    
-   /* const char *sh_color = COLOR_THRASH;
-    //const char *ctx_color = COLOR_CTX;
-    //snprintf(prompt, sizeof(prompt), "%s%s%sTHRASH%s) %s%s%.450s%s: ", //ORIGINAL
-     //sh_color, BOLD, REVERSE, STYLE_RESET, ctx_color, BOLD, ctx->cwd, STYLE_RESET); // %.502s limits to 502 chars to avoid overflow //ORIGINAL
 
-    //snprintf(prompt, sizeof(prompt), "\001%s%s%s\002THRASH\001%s\002) \001%s%s\002%.450s\001%s\002: ",*/
-    snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;;214m\002%.450s\001\033[0m\002: ",
-    ctx->cwd);
+
+void append_to_buffer(char **buf, const char *chunk) {
+    size_t oldlen = (*buf) ? strlen(*buf) : 0;
+    size_t addlen = strlen(chunk);
+    // +2 = one for possible newline, one for NUL
+    char *newbuf = realloc(*buf, oldlen + addlen + 2);
+    if (!newbuf) return; // handle OOM if you want
+    if (oldlen > 0) {
+        newbuf[oldlen] = '\n';
+        memcpy(newbuf + oldlen + 1, chunk, addlen + 1); // +1 for NUL
+    } else {
+        memcpy(newbuf, chunk, addlen + 1);
+    }
+    *buf = newbuf;
+}
+
+void free_buffer(char **buf) {
+    if (*buf) {
+        free(*buf);
+        *buf = NULL;
+    }
+}
+
+bool is_command_complete(const char *cmd) {
+    bool in_single = false, in_double = false, escaped = false;
+    for (const char *p = cmd; *p; p++) {
+        if (escaped) { escaped = false; continue; }
+        if (*p == '\\') { escaped = true; continue; }
+        if (*p == '\'' && !in_double) in_single = !in_single;
+        else if (*p == '"' && !in_single) in_double = !in_double;
+    }
+    return !in_single && !in_double;
+}
+
+
+
+
+int read_input(ShellContext *ctx, bool continuation) {
+    getcwd(ctx->cwd, sizeof(ctx->cwd)); // update cwd for prompt
+    char prompt[512];
+
+    if (continuation) {
+        snprintf(prompt, sizeof(prompt),
+                 "🔪 THRASH wants closure 🔪 ");
+    } else {
+        snprintf(prompt, sizeof(prompt), "\001\033[38;2;186;114;4m\002THRASH)\001\033[0m\002 \001\033[38;2;43;;214m\002%.450s\001\033[0m\002: ", ctx->cwd);
+    }
 
     char *line = readline(prompt);
-    if (!line) return 0; // Ctrl+D or EOF
+    if (!line) return 0; // Ctrl+D / EOF
 
-    //if (*line) add_history(line); // non-empty input gets saved
-    strncpy(ctx->input, line, sizeof(ctx->input) - 1); // 
-    ctx->input[sizeof(ctx->input) - 1] = '\0'; // ensure null-termination
-
-    free(line); // readline allocates with malloc
+    strncpy(ctx->input, line, sizeof(ctx->input) - 1);
+    ctx->input[sizeof(ctx->input) - 1] = '\0';
+    free(line);
     return 1;
 }
+
+
 
 bool is_numeric(const char *s) {
     if (!s) return false;

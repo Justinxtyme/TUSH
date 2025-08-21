@@ -66,32 +66,54 @@ int main() {
     
     // Log shell startup 
     LOG(LOG_LEVEL_INFO, "THRASH started, pid=%d", getpid());
-   
-    while (shell.running) {
-        //display_prompt(&shell); // Display the shell prompt
+    char *input_buf = NULL;
+    bool continuation_mode = false;
 
-        if (!read_input(&shell)) {  
+    while (shell.running) {
+        // Show normal cwd prompt or 🔪 continuation prompt
+        if (!read_input(&shell, continuation_mode)) {  
             LOG(LOG_LEVEL_ERR, "read_input failed: %s", strerror(errno));
             perror("readline failed");
             break; // Ctrl+D or error
         }
-        if (shell.input[0] != '\0') { 
-            // Add to persistent + mirror to readline
-            LOG(LOG_LEVEL_INFO, "logging: %s", shell.input);
-            HistoryAddResult hr = history_add(&shell.history, shell.input);
-            (void)hr; // if unused
-        }        
+
+        // Skip empty lines
+        if (shell.input[0] == '\0') {
+            continue;
+        }
+
+        // Append this chunk to the growing buffer
+        append_to_buffer(&input_buf, shell.input);
+
+        // Log just the chunk typed this round
+        LOG(LOG_LEVEL_INFO, "logging: %s", shell.input);
+        HistoryAddResult hr = history_add(&shell.history, shell.input);
+        (void)hr;
+
+        // Special-case: "$?" query — print and clear
         LOG(LOG_LEVEL_INFO, "checking for $?");
         if (strcmp(shell.input, "$?") == 0) {
             printf("%d\n", shell.last_status);
-            break;
+            free_buffer(&input_buf);
+            continuation_mode = false;
+            continue;
         }
-        LOG(LOG_LEVEL_INFO, "expanding variables in: %s", shell.input);
-        // Expand variables like before processing 
-        char *expanded = expand_variables_ex(shell.input, shell.last_status, shell.vars);
+
+        // Decide if ready to execute or still incomplete
+        if (!is_command_complete(input_buf)) {
+            continuation_mode = true;
+            continue; // Loop again, show continuation prompt
+        }
+
+        // ✅ Command is complete — execute as usual
+        continuation_mode = false;
+
+        LOG(LOG_LEVEL_INFO, "expanding variables in: %s", input_buf);
+        char *expanded = expand_variables_ex(input_buf, shell.last_status, shell.vars);
         LOG(LOG_LEVEL_INFO, "expanded=%s", expanded);
         if (!expanded) {
             perror("expand_variables");
+            free_buffer(&input_buf);
             continue;
         }
         LOG(LOG_LEVEL_INFO, "Expanded input: '%s'", expanded);
@@ -99,6 +121,7 @@ int main() {
         process_input_segments(&shell, expanded);
 
         free(expanded);
+        free_buffer(&input_buf); // reset for next command
     }
     
     if (history_save(&shell.history) != 0) {
