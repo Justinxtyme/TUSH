@@ -77,70 +77,74 @@ bool is_numeric(const char *s) {
     return true;
 }
 
-bool handle_literal_expansion(ShellContext *shell, const char *expanded) {
-    if (!is_numeric(expanded)) {
+bool handle_literal_expansion(ShellContext *shell, Command *cmd) {
+    if (!is_numeric(cmd->argv[0])) {
         return false;
     }
 
-    LOG(LOG_LEVEL_INFO, "Intercepted numeric literal: '%s'", expanded);
+    LOG(LOG_LEVEL_INFO, "Intercepted numeric literal: '%s'", cmd->argv[0]);
 
-    char *args[] = { "echo", (char *)expanded, NULL };
-    char **cmds[] = { args };
+    // Optional: rewrite argv to echo the literal
+    char *args[] = { "echo", cmd->argv[0], NULL };
+    cmd->argv = args;
+    cmd->argc = 2;
+    cmd->is_builtin = true;  // if echo is handled as a builtin
 
-    LOG(LOG_LEVEL_INFO, "Launching echo pipeline for literal '%s'", expanded);
+    Command *cmds[] = { cmd };
     launch_pipeline(shell, cmds, 1);
 
     return true;
 }
 
+
+
+// Note: whitespace trimming deferred to parse_pipeline()
+// This function only handles quote-aware semicolon splitting
 char **split_on_semicolons(const char *input) {
     if (!input) return NULL; // Defensive: null input yields null output
 
     size_t len = strlen(input);
+    if (len == 0) return NULL; // Empty input yields null output
 
     // Make a modifiable copy of the input string
-    // We'll overwrite semicolons with '\0' to split in-place
     char *copy = strdup(input);
-    if (!copy) return NULL; // Allocation failed
+    if (!copy) return NULL;
 
-    // Allocate space for output segments
-    // Worst case: every character is a segment (overkill, but safe)
-    char **segments = calloc(len + 1, sizeof(char *));
+    // Allocate space for output segments (+1 for NULL terminator)
+    char **segments = calloc(len + 2, sizeof(char *));
     if (!segments) {
         free(copy);
         return NULL;
     }
 
-    int seg_count = 0;       // Number of segments found
-    char *start = copy;      // Start of current segment
-    char *p = copy;          // Current scanning pointer
-    char quote = '\0';       // Tracks whether we're inside quotes
+    int seg_count = 0;
+    char *start = copy;
+    char *p = copy;
+    char quote = '\0';
 
     while (*p) {
-        // Handle quote tracking
         if (*p == '\'' || *p == '"') {
             if (quote == '\0') {
-                quote = *p; // Entering quoted region
+                quote = *p;
             } else if (quote == *p) {
-                quote = '\0'; // Exiting quoted region
+                quote = '\0';
             }
-        }
-        // If we hit a semicolon outside quotes, it's a split point
-        else if (*p == ';' && quote == '\0') {
-            *p = '\0'; // Null-terminate current segment
-            segments[seg_count++] = strdup(start); // Copy segment
-            start = p + 1; // Move start to next character
+        } else if ((*p == ';') || (*p == '\n') && (quote == '\0')) {
+            *p = '\0';
+            if (*start) {
+                segments[seg_count++] = strdup(start);
+            }
+            start = p + 1;
         }
         ++p;
     }
 
-    // Add final segment (if any)
+    // Final segment
     if (*start) {
         segments[seg_count++] = strdup(start);
     }
 
-    segments[seg_count] = NULL; // Null-terminate the array
-
-    free(copy); // Free the temporary buffer
+    segments[seg_count] = NULL; // NULL-terminate the array
+    free(copy);
     return segments;
 }

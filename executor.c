@@ -38,6 +38,7 @@
 #include "jobs.h"
 #include "input.h"
 #include "var.h"
+#include "redirect.h"
 #include <errno.h>
 #include <termios.h>    
 #include <limits.h>
@@ -202,7 +203,7 @@ char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars
             if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
             continue;
         }
-        LOG(LOG_LEVEL_INFO, "unsupported: %s", c);
+        LOG(LOG_LEVEL_INFO, "unsupported: %c", c);
         /* Unsupported/positional/ lone '$' -> emit literal '$' and reprocess next char */
         if (!append_ch(&out, &cap, &dst, '$')) goto oom;
         /* do not advance src here; next loop will handle current char */
@@ -353,70 +354,355 @@ enum path_lookup {
     }
 }
 
-char ***parse_pipeline(const char *input, int *num_cmds) {
-    char ***cmds = calloc(MAX_CMDS, sizeof(char **));
-    if (!cmds) return NULL;
+/*Command **parse_pipeline(const char *input, int *num_cmds) {
+    Command **cmds = calloc(MAX_CMDS, sizeof(Command *));
+    if (!cmds) { if (num_cmds) *num_cmds = 0; return NULL; }
 
-    int cmd_index = 0;
-    int arg_index = 0;
-    char **argv = calloc(MAX_ARGS, sizeof(char *));
-    if (!argv) {
-        free(cmds);
-        return NULL;
-    }
-
-    const char *p = input;
+    int cmd_index = 0, arg_index = 0, buff_index = 0;
     char token_buff[1024];
-    int buff_index = 0;
     bool in_single = false, in_double = false;
+    bool skip_next_arg = false, aborted = false;
+    const char *p = input;
+
+    // init first command
+    Command *current = calloc(1, sizeof(Command));
+    if (!current) { free(cmds); if (num_cmds) *num_cmds = 0; return NULL; }
+    current->argv = calloc(MAX_ARGS, sizeof(char *));
+    if (!current->argv) { free(current); free(cmds); if (num_cmds) *num_cmds = 0; return NULL; }
 
     while (*p) {
         char c = *p;
 
+        // escape sequence
         if (c == '\\' && p[1]) {
-            token_buff[buff_index++] = p[1];
+            if (buff_index < (int)sizeof(token_buff) - 1)
+                token_buff[buff_index++] = p[1];
             p += 2;
-        } else if (c == '\'' && !in_double) {
-            in_single = !in_single;
-            p++;
-        } else if (c == '"' && !in_single) {
-            in_double = !in_double;
-            p++;
-        } else if (c == '|' && !in_single && !in_double) {
-            if (buff_index > 0) {
+            continue;
+        }
+
+        // quote toggles
+        if (c == '\'' && !in_double) { in_single = !in_single; p++; continue; }
+        if (c == '"'  && !in_single) { in_double = !in_double; p++; continue; }
+
+        // pipe flush
+        if (c == '|' && !in_single && !in_double) {
+            if (buff_index > 0 && !skip_next_arg && arg_index < MAX_ARGS - 1) {
                 token_buff[buff_index] = '\0';
-                argv[arg_index++] = strdup(token_buff);
-                buff_index = 0;
+                current->argv[arg_index++] = strdup(token_buff);
             }
-            argv[arg_index] = NULL;
-            cmds[cmd_index++] = argv;
-            argv = calloc(MAX_ARGS, sizeof(char *));
+            buff_index = 0;
+            skip_next_arg = false; // reset after push attempt
+
+            current->argv[arg_index] = NULL;
+            current->argc = arg_index;
+
+            if (cmd_index < MAX_CMDS) {
+                cmds[cmd_index++] = current;
+            } else {
+                LOG(LOG_LEVEL_ERR, "Too many commands in pipeline, discarding extra");
+                free_command(current);
+                aborted = true;
+                break;
+            }
+
+            current = calloc(1, sizeof(Command));
+            if (!current) { aborted = true; break; }
+            current->argv = calloc(MAX_ARGS, sizeof(char *));
+            if (!current->argv) { free(current); aborted = true; break; }
             arg_index = 0;
             p++;
-        } else if (isspace(c) && !in_single && !in_double) {
+            continue;
+        }
+
+        // redirection
+        if ((c == '>' || c == '<') && !in_single && !in_double) {
+            char chevron = c;
+            bool is_append = (*(p + 1) == c);
+            int redir_fd = -1;
+
+            if (p > input && isdigit((unsigned char)*(p - 1)))
+                redir_fd = *(p - 1) - '0';
+
+            p += is_append ? 2 : 1;
+            while (*p && isspace((unsigned char)*p)) p++;
+
+            buff_index = 0;
+            while (*p && (!isspace((unsigned char)*p) || in_single || in_double)) {
+                if (*p == '\'' && !in_double) { in_single = !in_single; p++; }
+                else if (*p == '"' && !in_single) { in_double = !in_double; p++; }
+                else {
+                    if (buff_index < (int)sizeof(token_buff) - 1)
+                        token_buff[buff_index++] = *p;
+                    p++;
+                }
+            }
+            token_buff[buff_index] = '\0';
+            char *filename = strdup(token_buff);
+            buff_index = 0;
+
+            if (chevron == '>' && is_append) {
+                current->append_file = filename;
+                current->output_fd = (redir_fd != -1) ? redir_fd : 1;
+            } else if (chevron == '>') {
+                current->output_file = filename;
+                current->output_fd = (redir_fd != -1) ? redir_fd : 1;
+            } else {
+                current->input_file = filename;
+                current->input_fd = (redir_fd != -1) ? redir_fd : 0;
+            }
+
+            skip_next_arg = true; // block this token from argv
+            continue;
+        }
+
+        // whitespace flush
+        if (isspace((unsigned char)c) && !in_single && !in_double) {
             if (buff_index > 0) {
-                token_buff[buff_index] = '\0';
-                argv[arg_index++] = strdup(token_buff);
+                if (!skip_next_arg && arg_index < MAX_ARGS - 1) {
+                    token_buff[buff_index] = '\0';
+                    current->argv[arg_index++] = strdup(token_buff);
+                }
                 buff_index = 0;
+                skip_next_arg = false; // only now clear it
             }
             p++;
-        } else {
+            continue;
+        }
+
+        // normal char
+        if (buff_index < (int)sizeof(token_buff) - 1)
             token_buff[buff_index++] = c;
-            p++;
+        p++;
+    }
+
+    // final flush
+    if (!aborted) {
+        if (buff_index > 0 && !skip_next_arg && arg_index < MAX_ARGS - 1) {
+            token_buff[buff_index] = '\0';
+            current->argv[arg_index++] = strdup(token_buff);
+        }
+        // no push if skip_next_arg true
+        current->argv[arg_index] = NULL;
+        current->argc = arg_index;
+
+        if (cmd_index < MAX_CMDS) {
+            cmds[cmd_index++] = current;
+        } else {
+            LOG(LOG_LEVEL_ERR, "Final command exceeds MAX_CMDS, discarding");
+            free_command(current);
         }
     }
 
-    if (buff_index > 0) {
-        token_buff[buff_index] = '\0';
-        argv[arg_index++] = strdup(token_buff);
+    if (num_cmds) *num_cmds = cmd_index;
+    return cmds;
+} */
+
+Command **parse_pipeline(const char *input, int *num_cmds) {
+    Command **cmds = calloc(MAX_CMDS, sizeof(Command *));
+    if (!cmds) {
+        if (num_cmds) *num_cmds = 0;
+        return NULL;
     }
 
-    argv[arg_index] = NULL;
-    cmds[cmd_index++] = argv;
-    *num_cmds = cmd_index;
+    int cmd_index = 0;
+    int arg_index = 0;
+    int buff_index = 0;
 
+    char token_buff[1024];
+    bool in_single = false, in_double = false;
+    const char *p = input;
+    bool aborted = false;
+
+    // Allocate first Command
+    Command *current = calloc(1, sizeof(Command));
+    if (!current) {
+        free(cmds);
+        if (num_cmds) *num_cmds = 0;
+        return NULL;
+    }
+    current->argv = calloc(MAX_ARGS, sizeof(char *));
+    if (!current->argv) {
+        free(current);
+        free(cmds);
+        if (num_cmds) *num_cmds = 0;
+        return NULL;
+    }
+
+    while (*p) {
+        char c = *p;
+
+        // 1) Escape sequence: copy next char verbatim
+        if (c == '\\' && p[1]) {
+            if (buff_index < (int)sizeof(token_buff) - 1) {
+                token_buff[buff_index++] = p[1];
+            }
+            p += 2;
+            continue;
+        }
+
+        // 2) Quote toggles
+        if (c == '\'' && !in_double) {
+            in_single = !in_single;
+            p++;
+            continue;
+        }
+        if (c == '"' && !in_single) {
+            in_double = !in_double;
+            p++;
+            continue;
+        }
+
+        // 3) Pipe: end current command, start next
+        if (c == '|' && !in_single && !in_double) {
+            // flush any pending word
+            if (buff_index > 0) {
+                token_buff[buff_index] = '\0';
+                if (arg_index < MAX_ARGS - 1) {
+                    current->argv[arg_index++] = strdup(token_buff);
+                }
+                buff_index = 0;
+            }
+
+            // terminate current->argv
+            current->argv[arg_index] = NULL;
+            current->argc = arg_index;
+
+            // store command
+            if (cmd_index < MAX_CMDS) {
+                cmds[cmd_index++] = current;
+            } else {
+                LOG(LOG_LEVEL_ERR, "Too many commands in pipeline, discarding extra");
+                free_command(current);
+                aborted = true;
+                break;
+            }
+
+            // allocate next Command
+            current = calloc(1, sizeof(Command));
+            if (!current) { aborted = true; break; }
+            current->argv = calloc(MAX_ARGS, sizeof(char *));
+            if (!current->argv) { free(current); aborted = true; break; }
+
+            arg_index = 0;
+            p++;
+            continue;
+        }
+
+        // 4) Redirection: >, >>, <
+        if ((c == '>' || c == '<') && !in_single && !in_double) {
+            char chevron = c;
+            bool is_append = (c == '>' && p[1] == '>');
+            int specified_fd = -1;
+
+            // If the token buffer is all digits, consume it as a FD spec
+            if (buff_index > 0) {
+                bool all_digits = true;
+                for (int i = 0; i < buff_index; i++) {
+                    if (token_buff[i] < '0' || token_buff[i] > '9') {
+                        all_digits = false;
+                        break;
+                    }
+                }
+                if (all_digits) {
+                    specified_fd = atoi(token_buff);
+                    buff_index = 0;
+                } else {
+                    // flush it as a real argv word
+                    token_buff[buff_index] = '\0';
+                    if (arg_index < MAX_ARGS - 1) {
+                        current->argv[arg_index++] = strdup(token_buff);
+                    }
+                    buff_index = 0;
+                }
+            }
+
+            // skip the chevron(s)
+            p += is_append ? 2 : 1;
+
+            // skip spaces before filename
+            while (*p && isspace((unsigned char)*p)) p++;
+
+            // parse the filename (respecting quotes)
+            buff_index = 0;
+            while (*p && (!isspace((unsigned char)*p) || in_single || in_double)) {
+                if (*p == '\'' && !in_double) {
+                    in_single = !in_single;
+                    p++;
+                } else if (*p == '"' && !in_single) {
+                    in_double = !in_double;
+                    p++;
+                } else {
+                    if (buff_index < (int)sizeof(token_buff) - 1) {
+                        token_buff[buff_index++] = *p;
+                    }
+                    p++;
+                }
+            }
+            token_buff[buff_index] = '\0';
+            char *filename = strdup(token_buff);
+            buff_index = 0;
+
+            // assign to input/output as appropriate
+            if (chevron == '<') {
+                current->input_file = filename;
+                current->input_fd = (specified_fd != -1) ? specified_fd : 0;
+            } else if (chevron == '>' && is_append) {
+                current->append_file = filename;
+                current->output_fd = (specified_fd != -1) ? specified_fd : 1;
+            } else {
+                current->output_file = filename;
+                current->output_fd = (specified_fd != -1) ? specified_fd : 1;
+            }
+
+            // do not push filename to argv
+            continue;
+        }
+
+        // 5) Whitespace: flush token
+        if (isspace((unsigned char)c) && !in_single && !in_double) {
+            if (buff_index > 0) {
+                token_buff[buff_index] = '\0';
+                if (arg_index < MAX_ARGS - 1) {
+                    current->argv[arg_index++] = strdup(token_buff);
+                }
+                buff_index = 0;
+            }
+            p++;
+            continue;
+        }
+
+        // 6) Regular character: accumulate
+        if (buff_index < (int)sizeof(token_buff) - 1) {
+            token_buff[buff_index++] = c;
+        }
+        p++;
+    }
+
+    // Final flush if not aborted
+    if (!aborted) {
+        if (buff_index > 0) {
+            token_buff[buff_index] = '\0';
+            if (arg_index < MAX_ARGS - 1) {
+                current->argv[arg_index++] = strdup(token_buff);
+            }
+        }
+        current->argv[arg_index] = NULL;
+        current->argc = arg_index;
+
+        if (cmd_index < MAX_CMDS) {
+            cmds[cmd_index++] = current;
+        } else {
+            LOG(LOG_LEVEL_ERR, "Final command exceeds MAX_CMDS, discarding");
+            free_command(current);
+        }
+    }
+
+    if (num_cmds) *num_cmds = cmd_index;
     return cmds;
 }
+
+
 
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
@@ -470,71 +756,134 @@ static pipe_pair_t *create_pipes(int num_cmds) {
     return pipes;
 }
 
-//=====================================EXEC_CHILD================================================
-// used for executing child processes, including resolving paths and setting up the environment
-// args: command arguments, including argv[0] (the command to execute)  
-// Resolve, validate, set signals, execve, and _exit with correct code
-// ==============================================================================================
-static void exec_child(ShellContext *ctx, char **args) {
-    char *resolved = NULL;
-    const char *path_to_exec;
-
-    // 1) Path lookup
-    if (has_slash(args[0])) {
-        path_to_exec = args[0];
-    } else {
-        int r = search_path_alloc(args[0], &resolved);
-        if (r == NOT_FOUND) {
-            fprintf(stderr, "thrash: command not found: %s\n", args[0]);
-            _exit(127);
+// Execute a single command with redirection and cwd override.
+// This is called in the child process after fork().
+static void exec_command(ShellContext *shell, Command *cmd) {
+    // Input redirection: `< file`
+    if (cmd->input_file) {
+        int fd = open(cmd->input_file, O_RDONLY);
+        if (fd < 0) {
+            perror("open input_file");
+            exit(1);
         }
-        if (r == FOUND_DIR) {
-            fprintf(stderr, "thrash: is a directory: %s\n", args[0]);
-            _exit(126);
+        if (dup2(fd, STDIN_FILENO) < 0) {
+            perror("dup2 input_file");
+            close(fd);
+            exit(1);
         }
-        if (r == FOUND_NOEXEC) {
-            fprintf(stderr, "thrash: permission denied: %s\n", args[0]);
-            _exit(126);
+        close(fd);
+    }
+
+    // Output redirection: `>` or `>>`
+    if (cmd->output_file || cmd->append_file) {
+        const char *target = cmd->append_file ? cmd->append_file : cmd->output_file;
+        int flags = O_WRONLY | O_CREAT;
+        flags |= (cmd->append_file ? O_APPEND : O_TRUNC);
+        int fd = open(target, flags, 0644);
+        if (fd < 0) {
+            perror("open output_file");
+            exit(1);
         }
-        path_to_exec = resolved;
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            perror("dup2 output_file");
+            close(fd);
+            exit(1);
+        }
+        close(fd);
     }
 
-    // 2) Type & perm checks
-    if (is_directory(path_to_exec)) {
-        fprintf(stderr, "thrash: is a directory: %s\n", path_to_exec);
-        _exit(126);
-    }
-    if (is_regular(path_to_exec) && !is_executable(path_to_exec)) {
-        fprintf(stderr, "thrash: permission denied: %s\n", path_to_exec);
-        _exit(126);
+    // Error redirection: `2> file`
+    if (cmd->error_file) {
+        int fd = open(cmd->error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            perror("open error_file");
+            exit(1);
+        }
+        if (dup2(fd, STDERR_FILENO) < 0) {
+            perror("dup2 error_file");
+            close(fd);
+            exit(1);
+        }
+        close(fd);
     }
 
-    // 3) Reset to default signals in child
-    setup_child_signals();
-
-    // 4) Exec — on failure, pick proper code and message
-    //execve(path_to_exec, args, environ);
-    char **envp = vart_build_envp(ctx->vars);  // your shell's exported vars
-    execve(path_to_exec, args, envp);          // use your envp, not environ
-    //if error
-    int err = errno;
-    vart_free_envp(envp);
-    if (resolved) free(resolved);
-    if (err == ENOEXEC) {
-        fprintf(stderr, "thrash: exec format error: %s\n", path_to_exec);        
-        _exit(126);
-    } else if (err == EACCES) {
-        fprintf(stderr, "thrash: permission denied: %s\n", path_to_exec);
-        _exit(126);
-    } else if (err == ENOENT) {
-        // Prefer the original argv[0] for 'not found'
-        fprintf(stderr, "thrash: command not found: %s\n", args[0]);
-        _exit(127);
-    } else {
-        fprintf(stderr, "thrash: failed to exec %s: %s\n", path_to_exec, strerror(err));
-        _exit(126);
+    // Combined redirection: `2>&1` or `&>`
+    if (cmd->output_to_error) {
+        if (dup2(STDOUT_FILENO, STDERR_FILENO) < 0) {
+            perror("dup2 2>&1");
+            exit(1);
+        }
     }
+    if (cmd->error_to_output) {
+        if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
+            perror("dup2 &>");
+            exit(1);
+        }
+    }
+
+    // FD-based redirection (e.g., `3<foo`, `4>bar`, `2>&1`)
+    if (cmd->input_fd >= 0 && cmd->input_file) {
+        int fd = open(cmd->input_file, O_RDONLY);
+        if (fd < 0 || dup2(fd, cmd->input_fd) < 0) {
+            perror("dup2 input_fd");
+            if (fd >= 0) close(fd);
+            exit(1);
+        }
+        close(fd);
+    }
+    if (cmd->output_fd >= 0 && cmd->output_file) {
+        int fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0 || dup2(fd, cmd->output_fd) < 0) {
+            perror("dup2 output_fd");
+            if (fd >= 0) close(fd);
+            exit(1);
+        }
+        close(fd);
+    }
+    if (cmd->error_fd >= 0 && cmd->error_file) {
+        int fd = open(cmd->error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0 || dup2(fd, cmd->error_fd) < 0) {
+            perror("dup2 error_fd");
+            if (fd >= 0) close(fd);
+            exit(1);
+        }
+        close(fd);
+    }
+
+    // CWD override: for subshells or directory-specific exec
+    if (cmd->cwd_override && chdir(cmd->cwd_override) != 0) {
+        perror("chdir");
+        exit(1);
+    }
+
+    // Heredoc support (if implemented)
+    if (cmd->heredoc) {
+        // TODO: inject heredoc content into stdin via pipe or temp file
+    }
+
+    for (int i = 0; cmd->argv[i]; ++i) {
+        LOG(LOG_LEVEL_INFO, "exec_command: argv[%d] = \"%s\"", i, cmd->argv[i]);
+    }
+    LOG(LOG_LEVEL_INFO, "exec_command: input_file = \"%s\"", cmd->input_file ? cmd->input_file : "NULL");
+
+
+    
+    //Redirect 
+    perform_redirections(cmd);
+
+    for (int i = 0; cmd->argv[i]; ++i) {
+        LOG(LOG_LEVEL_INFO, "child argv[%d] = \"%s\"", i, cmd->argv[i]);
+    }
+    LOG(LOG_LEVEL_INFO, "child about to exec, stdout now points to file");
+
+    
+    // Execute the command
+    execvp(cmd->argv[0], cmd->argv);
+    perror("execvp");
+    exit(1);
 }
+
+
 
 static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) { 
     // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
@@ -593,51 +942,63 @@ static void try_setpgid(pid_t pid, pid_t pgid) {
             pid, pgid, strerror(errno));
 }
 
-/// is this needed anymore? i dont think so 
-static int handle_builtin_in_pipeline(ShellContext *shell, char **argv, int num_cmds) {                                      
-    if (!argv || !argv[0]) return 0;
+static int handle_builtin_in_pipeline(ShellContext *shell, Command *cmd, int num_cmds) {
+    if (!cmd || !cmd->argv || !cmd->argv[0]) return 0;
 
-    if (strcmp(argv[0], "cd") == 0) {
-        handle_cd(argv);
+    const char *name = cmd->argv[0];
+
+    if (strcmp(name, "cd") == 0) {
+        handle_cd(cmd); // now accepts full Command*
         reclaim_terminal(shell);
         shell->pipeline_pgid = 0;
-        return 1;
+        return 1; // handled, skip fork
     }
-    if (strcmp(argv[0], "exit") == 0) {
+
+    if (strcmp(name, "exit") == 0) {
         if (num_cmds == 1) {
             shell->running = 0;
-            return 2;
+            return 2; // signal shell to exit
         } else {
             fprintf(stderr,
                     "thrash: builtin 'exit' cannot be used in a pipeline\n");
-            return 1;
+            return 1; // handled, skip fork
         }
     }
-    return 0;
+
+    return 0; // not a builtin
 }
 
+
 /* Child-side setup: PGID, dup2 pipes, close FDs, reset signals, exec. */
-static void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pipe_pair_t *pipes, char **cmd, pid_t leader_pgid) { 
-    /* Process group: leader or join existing group */
+static void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pipe_pair_t *pipes, Command *cmd, pid_t leader_pgid) {
+    // Process group: leader or join existing group
     if (leader_pgid == 0) {
-        setpgid(0, 0);
+        setpgid(0, 0); // become group leader
     } else {
         if (setpgid(0, leader_pgid) < 0 &&
             errno != EACCES && errno != EINVAL && errno != EPERM)
         {
-            /* ignore benign races; parent will retry */
+            // benign races—parent will retry
         }
     }
 
-    /* Wire up stdin/stdout */
+    // Wire up stdin from previous pipe
     if (idx > 0) {
-        if (dup2(pipes[idx - 1][0], STDIN_FILENO) < 0) _exit(127);
-    }
-    if (idx < num_cmds - 1) {
-        if (dup2(pipes[idx][1], STDOUT_FILENO) < 0) _exit(127);
+        if (dup2(pipes[idx - 1][0], STDIN_FILENO) < 0) {
+            perror("dup2 stdin");
+            _exit(127);
+        }
     }
 
-    /* Close all pipe FDs */
+    // Wire up stdout to next pipe
+    if (idx < num_cmds - 1) {
+        if (dup2(pipes[idx][1], STDOUT_FILENO) < 0) {
+            perror("dup2 stdout");
+            _exit(127);
+        }
+    }
+
+    // Close all pipe FDs (we're done with them)
     if (pipes) {
         for (int j = 0; j < num_cmds - 1; ++j) {
             close(pipes[j][0]);
@@ -645,50 +1006,68 @@ static void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pip
         }
     }
 
-    /* Reset signals and exec */
+    // Reset signals to default behavior
     setup_child_signals();
-    exec_child(shell, cmd);
-    _exit(127);  /* defensive */
+
+    // Execute the command with redirection and cwd override
+    exec_command(shell, cmd);
+
+    // Defensive fallback—should never reach here
+    _exit(127);
 }
 
 
+
 /* ================= Refactored launch_pipeline ================= */
-int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
+// Ownership: cmds is BORROWED. launch_pipeline MUST NOT free or modify cmds or any Command/argv.
+// Caller (process_input_segments) frees via free_command_list(cmds, num_cmds) after return.
+int launch_pipeline(ShellContext *shell, Command **cmds, int num_cmds) {
     int i, status = 0, last_exit = 0;
     pid_t pgid = 0;
     shell->pipeline_pgid = 0; // Reset pipeline PGID
 
     /* Single-command case */
     if (num_cmds == 1) {
-        char **args = cmds[0];
-        if (!args || !args[0]) return 0; // Empty command
+        Command *cmd = cmds[0];
+        if (!cmd || !cmd->argv || !cmd->argv[0]) {
+            return 0; // Empty command
+        }
+        if (strcmp(cmd->argv[0], "exit") == 0) {
+            shell->running = 0;
+            return 0;
+        }
 
-        // Handle built-in 'cd' directly
-        if (strcmp(args[0], "cd") == 0) return handle_cd(args);
+        // Built-in: cd (no freeing of cmd)
+        if (strcmp(cmd->argv[0], "cd") == 0) {
+            int cd_res = handle_cd(cmd);
+            return cd_res;
+        }
 
-        pid_t pid = fork(); // Fork child process
+        pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
             return 1;
         }
+
         if (pid == 0) {
-            setpgid(0, 0);               // Create new process group
+            // Child
+            setpgid(0, 0);             // Create new process group
             setup_child_signals();      // Reset signal handlers
-            exec_child(shell, args);           // Exec external command
-            _exit(127);                 // Failsafe exit if exec fails
+            exec_command(shell, cmd);   // Exec external command with redirection
+            _exit(127);                 // If exec fails
         }
 
+        // Parent
         pgid = pid;
         shell->pipeline_pgid = pgid;
 
         // Set PGID, ignore benign races
         if (setpgid(pid, pgid) < 0 &&
-            errno != EACCES && errno != EINVAL && errno != EPERM)
-        {
+            errno != EACCES && errno != EINVAL && errno != EPERM) {
             // benign race, ignore
         }
 
-        give_terminal_to_pgid(shell, pgid); // Give terminal to child
+        give_terminal_to_pgid(shell, pgid);
 
         // Wait for child to finish or stop
         if (waitpid(pgid, &status, WUNTRACED) < 0 && errno != ECHILD) {
@@ -696,28 +1075,29 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
 
         if (WIFSTOPPED(status)) {
-            reclaim_terminal(shell);        // Reclaim terminal on stop
-            shell->last_pgid = pgid;        // Save PGID for job tracking
+            reclaim_terminal(shell);
+            shell->last_pgid = pgid;
             shell->pipeline_pgid = 0;
-            return 128 + WSTOPSIG(status);  // Return stop signal code
+            return 128 + WSTOPSIG(status);
         }
-        if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);   // Normal exit
-        else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status); // Killed by signal
+
+        if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
 
         reclaim_terminal(shell);
         shell->pipeline_pgid = 0;
-        return last_exit; // Return final exit status
+        return last_exit;
     }
 
-    /*   Multi-stage pipeline */
-    pid_t *pids = calloc(num_cmds, sizeof(pid_t)); // Allocate PID array
+    /* Multi-stage pipeline */
+    pid_t *pids = calloc(num_cmds, sizeof(pid_t));
     if (!pids) {
         perror("calloc pids");
         shell->pipeline_pgid = 0;
         return 1;
     }
 
-    pipe_pair_t *pipes = create_pipes(num_cmds); // Create pipe pairs
+    pipe_pair_t *pipes = create_pipes(num_cmds);
     if (num_cmds > 1 && !pipes) {
         perror("pipe setup");
         free(pids);
@@ -729,102 +1109,98 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     int final_status = 0, got_last = 0;
 
     for (i = 0; i < num_cmds; ++i) {
-        if (!cmds[i]) {
-            LOG(LOG_LEVEL_INFO, "cmds[%d] is NULL", i);
+        Command *cmd = cmds[i];
+        if (!cmd || !cmd->argv || !cmd->argv[0]) {
+            LOG(LOG_LEVEL_INFO, "cmds[%d] is NULL or empty", i);
             continue;
         }
-        if (!cmds[i][0]) {
-            LOG(LOG_LEVEL_INFO, "cmds[%d][0] is NULL", i);
-            continue;
-        }
-        LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmds[i][0]);
 
-        // Handle built-ins inside pipeline
-        int builtin_res = handle_builtin_in_pipeline(shell, cmds[i], num_cmds);
-        if (builtin_res == 1) continue; // Skip fork
+        LOG(LOG_LEVEL_INFO, "cmds[%d][0] = '%s'", i, cmd->argv[0]);
+
+        int builtin_res = handle_builtin_in_pipeline(shell, cmd, num_cmds);
+        if (builtin_res == 1) continue; // Handled without fork
         if (builtin_res == 2) {
+            // Early return (e.g., 'exit' in pipeline semantics)
             destroy_pipes(pipes, num_cmds);
             free(pids);
             shell->pipeline_pgid = 0;
             return 0;
         }
 
-        pids[i] = fork(); // Fork pipeline stage
-      
+        pids[i] = fork();
         if (pids[i] < 0) {
-            // Log args for debugging
-            if (cmds[i]) {
-                for (int k = 0; cmds[i][k]; ++k) {
-                    LOG(LOG_LEVEL_INFO, "cmds[%d][%d] = '%s'", i, k, cmds[i][k]);
-                }
-            }
+            LOG(LOG_LEVEL_ERR, "fork failed for cmds[%d]", i);
             perror("fork");
             destroy_pipes(pipes, num_cmds);
             free(pids);
             shell->pipeline_pgid = 0;
             return 1;
         }
-        // set up leader and join all to  pgid
+
         if (pids[i] == 0) {
-            pid_t leader = (pgid == 0) ? 0 : pgid; // First child becomes group leader
-            setup_pipeline_child(shell, i, num_cmds, pipes, cmds[i], leader); // Setup redirections and exec
+            // Child
+            pid_t leader = (pgid == 0) ? 0 : pgid;
+            setup_pipeline_child(shell, i, num_cmds, pipes, cmd, leader);
+            // setup_pipeline_child should exec or _exit on failure
+            _exit(127);
         } else {
+            // Parent
             if (pgid == 0) {
-                pgid = pids[i]; // First child sets PGID
+                pgid = pids[i];
                 shell->pipeline_pgid = pgid;
                 try_setpgid(pids[i], pgid);
-                give_terminal_to_pgid(shell, pgid); // Give terminal to pipeline
+                give_terminal_to_pgid(shell, pgid);
             } else {
-                try_setpgid(pids[i], pgid); // Join existing PGID
+                try_setpgid(pids[i], pgid);
             }
         }
     }
 
-    /* Compute actual forked children count and last_pid safely */
     int forked = 0;
     last_pid = -1;
     for (int k = 0; k < num_cmds; ++k) {
         if (pids[k] > 0) {
             ++forked;
             LOG(LOG_LEVEL_INFO, "child %d successfully forked", k + 1);
-            last_pid = pids[k]; // Track last valid PID
+            last_pid = pids[k];
         } else {
             LOG(LOG_LEVEL_INFO, "child %d failed fork", k + 1);
         }
     }
+
     int live = forked;
+    if (pipes) close_pipes(pipes, num_cmds);
 
-    if (pipes) close_pipes(pipes, num_cmds); // Close pipe fds in parent
-
-    // Wait for all children in the pipeline
     while (live > 0) {
-        pid_t w = waitpid(-pgid, &status, WUNTRACED); // Wait for any child in PGID
+        pid_t w = waitpid(-pgid, &status, WUNTRACED);
         if (w < 0) {
             if (errno == EINTR) continue;
             if (errno == ECHILD) break;
             perror("waitpid");
             break;
         }
+
         if (WIFSTOPPED(status)) {
             reclaim_terminal(shell);
             shell->last_pgid = pgid;
             shell->pipeline_pgid = 0;
             destroy_pipes(pipes, num_cmds);
             free(pids);
-            return 128 + WSTOPSIG(status); // Return stop signal code
+            return 128 + WSTOPSIG(status);
         }
+
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             --live;
             if (WIFEXITED(status))        last_exit = WEXITSTATUS(status);
             else if (WIFSIGNALED(status)) last_exit = 128 + WTERMSIG(status);
             if (w == last_pid) {
                 final_status = status;
-                got_last = 1; // Mark final command status
+                got_last = 1;
             }
         }
     }
 
-    reclaim_terminal(shell); // Restore terminal to shell
+    reclaim_terminal(shell);
     shell->last_pgid = pgid;
 
     int ret;
@@ -835,7 +1211,7 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
     } else {
         if (last_pid > 0) {
             int tmp;
-            pid_t r = waitpid(last_pid, &tmp, WNOHANG); // Try to get last PID status
+            pid_t r = waitpid(last_pid, &tmp, WNOHANG);
             if (r == last_pid) {
                 if (WIFEXITED(tmp))        ret = WEXITSTATUS(tmp);
                 else if (WIFSIGNALED(tmp)) ret = 128 + WTERMSIG(tmp);
@@ -848,108 +1224,125 @@ int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds) {
         }
     }
 
-    destroy_pipes(pipes, num_cmds); // Cleanup
+    destroy_pipes(pipes, num_cmds);
     free(pids);
     shell->pipeline_pgid = 0;
-    return ret; // Return final status
+
+    // Do NOT free cmds or Command here.
+    return ret;
 }
 
 /*=================================process_input_segments=====================================
 processes expanded input, splitting at semicolons for */
 void process_input_segments(ShellContext *shell, const char *expanded_input) {
-    
-    // Split the input string into segments using semicolons as delimiters
     char **segments = split_on_semicolons(expanded_input);
-    if (!segments) return; // If splitting fails, bail out
+    if (!segments) return;
 
-    // Iterate over each segment (e.g., "ls -l", "echo hi", etc.)
     for (int i = 0; segments[i]; ++i) {
         int num_cmds = 0;
-
-        // Parse the segment into a pipeline of commands
-        char ***cmds = parse_pipeline(segments[i], &num_cmds);
+        Command **cmds = parse_pipeline(segments[i], &num_cmds);
         LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
 
-        // Skip empty or invalid pipelines
-        if (num_cmds == 0 || !cmds || !cmds[0]) continue;
-
-        // Check for built-in "exit" command in the first command of the pipeline
-        if (cmds[0][0] && strcmp(cmds[0][0], "exit") == 0) {
-            shell->running = 0; // Signal shell to stop running
-            break;              // Exit the loop immediately
+        // Validate command list before doing anything
+        bool valid = true;
+        if (!cmds || num_cmds <= 0) {
+            valid = false;
+        } else {
+            for (int j = 0; j < num_cmds; ++j) {
+                if (!cmds[j]) {
+                    LOG(LOG_LEVEL_ERR, "cmds[%d] is NULL", j);
+                    valid = false;
+                    break;
+                }
+                if (!cmds[j]->argv || !cmds[j]->argv[0]) {
+                    LOG(LOG_LEVEL_ERR, "cmds[%d] has invalid argv", j);
+                    valid = false;
+                    break;
+                }
+            }
         }
-        
-        //unset variables 
-        if (strcmp(cmds[0][0], "unset") == 0) {
+
+        if (!valid) {
+            LOG(LOG_LEVEL_WARN, "Skipping invalid command segment: '%s'", segments[i]);
+            free_command_list(cmds, num_cmds);
+            continue;
+        }
+
+        const char *cmd_name = cmds[0]->argv[0];
+
+        // Built-in: exit
+        if (strcmp(cmd_name, "exit") == 0) {
+            shell->running = 0;
+            free_command_list(cmds, num_cmds);
+            break;
+        }
+
+        // Built-in: unset
+        if (strcmp(cmd_name, "unset") == 0) {
             if (num_cmds > 1) {
-                fprintf(stderr, "%s: cannot be used in a pipeline\n", cmds[0][0]);
+                fprintf(stderr, "%s: cannot be used in a pipeline\n", cmd_name);
                 shell->last_status = 1;
-                continue;
-            } 
-            if (!cmds[0][1]) {    // if no argument was given
-                fprintf(stderr, "unset: missing variable name\n"); 
-                shell->last_status = 1; 
+                free_command_list(cmds, num_cmds);
                 continue;
             }
+
+            if (!cmds[0]->argv[1]) {
+                fprintf(stderr, "unset: missing variable name\n");
+                shell->last_status = 1;
+                free_command_list(cmds, num_cmds);
+                continue;
+            }
+
             LOG(LOG_LEVEL_INFO, "Unsetting variable(s)");
-            for (int i = 1; cmds[0][i]; i++) {
+            for (int j = 1; cmds[0]->argv[j]; ++j) {
                 LOG(LOG_LEVEL_INFO, "checking variable");
-                if (!vart_unset(shell->vars, cmds[0][i])) {
-                    fprintf(stderr, "unset: failed to unset '%s'\n", cmds[0][i]);
+                if (!vart_unset(shell->vars, cmds[0]->argv[j])) {
+                    fprintf(stderr, "unset: failed to unset '%s'\n", cmds[0]->argv[j]);
                     shell->last_status = 1;
-                    continue;
                 }
             }
             shell->last_status = 0;
+            free_command_list(cmds, num_cmds);
             continue;
-        }        
-        
-        if (is_var_assignment(cmds[0][0])) {
-            LOG(LOG_LEVEL_INFO, "initiating variable");
-            char *eq = strchr(cmds[0][0], '=');
-            size_t name_len = eq - cmds[0][0];
-            char *name = strndup(cmds[0][0], name_len);
-            char *value = strdup(eq + 1);
-            vart_set(shell->vars, name, value, 0); // or V_EXPORT if needed
-            LOG(LOG_LEVEL_INFO, "%s set to %s", name, value);
-            if (cmds[1]) {
-                fprintf(stderr, "Setting variable kills pipeline. Killed before (%s %s)\n", cmds[1][0], cmds[1][1]);
-            }
-            free(name);
-            free(value);
-            continue; // skip launching pipeline
         }
 
+        // Variable assignment
+        if (is_var_assignment(cmd_name)) {
+            LOG(LOG_LEVEL_INFO, "initiating variable");
+            char *eq = strchr(cmd_name, '=');
+            size_t name_len = eq - cmd_name;
+            char *name = strndup(cmd_name, name_len);
+            char *value = strdup(eq + 1);
+            vart_set(shell->vars, name, value, 0);
+            LOG(LOG_LEVEL_INFO, "%s set to %s", name, value);
+
+            if (num_cmds > 1 && cmds[1] && cmds[1]->argv && cmds[1]->argv[0]) {
+                fprintf(stderr, "Setting variable kills pipeline. Killed before (%s %s)\n",
+                        cmds[1]->argv[0], cmds[1]->argv[1] ? cmds[1]->argv[1] : "");
+            }
+
+            free(name);
+            free(value);
+            free_command_list(cmds, num_cmds);
+            continue;
+        }
 
         LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);
-
-        // Launch the pipeline and capture its exit status
         int status = launch_pipeline(shell, cmds, num_cmds);
-        shell->last_status = status; // Save status for $? expansion
+        shell->last_status = status;
         LOG(LOG_LEVEL_INFO, "Segment %d exited with status %d", i, status);
 
-        // If the pipeline was stopped (e.g., via Ctrl-Z), register it as a job
         if (status == 128 + SIGTSTP) {
-            add_job(shell->last_pgid, segments[i]); // Track job for fg/bg
-            fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id()-1, segments[i]);
+            add_job(shell->last_pgid, segments[i]);
+            fprintf(stderr, "[%d]+  Stopped  %s\n", next_job_id() - 1, segments[i]);
         }
 
         LOG(LOG_LEVEL_INFO, "pipeline exited/stopped with %d", status);
-
-        // Free memory allocated for the pipeline commands
-        for (int j = 0; j < num_cmds; ++j) {
-            for (int k = 0; cmds[j][k]; ++k) {
-                free(cmds[j][k]); // Free each argument
-            }
-            free(cmds[j]); // Free each command array
-        }
-        free(cmds); // Free the top-level command list
+        free_command_list(cmds, num_cmds);
     }
 
-    // Free the array of input segments
     free_segments(segments);
 }
-
 void free_segments(char **segments) {
     if (!segments) return;
     for (int i = 0; segments[i]; ++i) {

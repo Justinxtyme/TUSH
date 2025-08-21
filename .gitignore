@@ -24,3 +24,17 @@ thrash
 typescript
 .foo.swp
 colortheme.jsonc
+sorted.txt
+thrash_debug.log
+thrash_io_tests.sh
+thrash_io_tests_strace.sh
+run_output.log
+redirect.d
+redirect.o
+test_parser
+/.vscode
+.vscode/settings.json
+mid.txt
+out.txt
+.gitignore
+thrash_test_tmp/README.md

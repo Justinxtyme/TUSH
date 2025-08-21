@@ -81,13 +81,13 @@ int main() {
             HistoryAddResult hr = history_add(&shell.history, shell.input);
             (void)hr; // if unused
         }        
-        LOG(LOG_LEVEL_INFO, "made to $?check");
+        LOG(LOG_LEVEL_INFO, "checking for $?");
         if (strcmp(shell.input, "$?") == 0) {
             printf("%d\n", shell.last_status);
             break;
         }
-        LOG(LOG_LEVEL_INFO, "expanding variables");
-        // Expand variables like $?
+        LOG(LOG_LEVEL_INFO, "expanding variables in: %s", shell.input);
+        // Expand variables like before processing 
         char *expanded = expand_variables_ex(shell.input, shell.last_status, shell.vars);
         LOG(LOG_LEVEL_INFO, "expanded=%s", expanded);
         if (!expanded) {

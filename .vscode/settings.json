@@ -70,7 +70,8 @@
     "executor.h": "c",
     "stdint.h": "c",
     "compare": "c",
-    "jobs.h": "c"
+    "jobs.h": "c",
+    "redirect.h": "c"
   },
   "makefile.configureOnOpen": true,
   "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"

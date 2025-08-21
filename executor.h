@@ -8,13 +8,14 @@
 #include <string.h>    // for strcmp, strtok
 #include <stdio.h>
 #include "shell.h"
+#include "redirect.h"
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
 //int run_command(char **args);
-char ***parse_pipeline(const char *input, int *num_cmds);
+Command **parse_pipeline(const char *input, int *num_cmds);
 
-int launch_pipeline(ShellContext *shell, char ***cmds, int num_cmds);
+int launch_pipeline(ShellContext *shell, Command **cmds, int num_cmds);
 
 int search_path_alloc(const char *cmd, char **outp);
 
@@ -28,9 +29,8 @@ bool is_executable(const char *path);
 
 void print_exec_error(const char *what, int err);
 
-char *expand_variables(const char *input, int last_exit);
-
 char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars);
+
 
 void free_segments(char **segments);
 
