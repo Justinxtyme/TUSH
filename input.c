@@ -129,10 +129,12 @@ char **split_on_semicolons(const char *input) {
             } else if (quote == *p) {
                 quote = '\0';
             }
-        } else if ((*p == ';') || (*p == '\n') && (quote == '\0')) {
+        } else if (((*p == ';') || (*p == '\n')) && (quote == '\0')) {
+            if (p > start && *(p - 1) == '\r') *(p - 1) = '\0';
             *p = '\0';
             if (*start) {
                 segments[seg_count++] = strdup(start);
+                LOG(LOG_LEVEL_INFO, "[split] segment[%d]: '%s'\n", seg_count - 1, segments[seg_count - 1]);
             }
             start = p + 1;
         }
