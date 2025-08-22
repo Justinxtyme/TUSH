@@ -30,10 +30,10 @@ typedef struct {
     char *raw_input;
 } Command;
 
-// === Your original parse_pipeline() goes here ===
+// === Your original parse_commands() goes here ===
 // Paste it exactly as-is, no changes.
 // I’ll skip repeating it here since you already posted it.
-Command **parse_pipeline(const char *input, int *num_cmds) {
+Command **parse_commands(const char *input, int *num_cmds) {
     Command **cmds = calloc(MAX_CMDS, sizeof(Command *));
     if (!cmds) return NULL;
 
@@ -241,7 +241,7 @@ int main() {
         int num_cmds = 0;
 
         // Use your original parser
-        Command **cmds = (Command **)parse_pipeline(test_inputs[i], &num_cmds);
+        Command **cmds = (Command **)parse_commands(test_inputs[i], &num_cmds);
         if (!cmds) {
             fprintf(stderr, "Parsing failed\n");
             continue;

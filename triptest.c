@@ -10,7 +10,7 @@
 #include <termios.h>
 #include <signal.h> 
 //#include <unistd.h> // for pid_t
-int launch_pipeline(ShellContext *shell, Command **cmds, int num_cmds) {
+int launch_commands(ShellContext *shell, Command **cmds, int num_cmds) {
     int i, status = 0, last_exit = 0;
     pid_t pgid = 0;
     shell->pipeline_pgid = 0; // Reset pipeline PGID
@@ -237,8 +237,8 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
         int num_cmds = 0;
 
         // Parse the segment into a pipeline of Command structs
-        Command **cmds = parse_pipeline(segments[i], &num_cmds);
-        LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
+        Command **cmds = parse_commands(segments[i], &num_cmds);
+        LOG(LOG_LEVEL_INFO, "parse_commands returned %d commands", num_cmds);
 
         if (num_cmds == 0 || !cmds || !cmds[0] || !cmds[0]->argv || !cmds[0]->argv[0]) {
             continue;
@@ -295,7 +295,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
 
         LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);
 
-        int status = launch_pipeline(shell, cmds, num_cmds);
+        int status = launch_commands(shell, cmds, num_cmds);
         shell->last_status = status;
         LOG(LOG_LEVEL_INFO, "Segment %d exited with status %d", i, status);
 

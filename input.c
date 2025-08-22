@@ -127,14 +127,14 @@ bool handle_literal_expansion(ShellContext *shell, Command *cmd) {
     cmd->is_builtin = true;  // if echo is handled as a builtin
 
     Command *cmds[] = { cmd };
-    launch_pipeline(shell, cmds, 1);
+    launch_commands(shell, cmds, 1);
 
     return true;
 }
 
 
 
-// Note: whitespace trimming deferred to parse_pipeline()
+// Note: whitespace trimming deferred to parse_commands()
 // This function only handles quote-aware semicolon splitting
 char **split_on_semicolons(const char *input) {
     if (!input) return NULL; // Defensive: null input yields null output

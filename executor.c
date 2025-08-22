@@ -354,151 +354,8 @@ enum path_lookup {
     }
 }
 
-/*Command **parse_pipeline(const char *input, int *num_cmds) {
-    Command **cmds = calloc(MAX_CMDS, sizeof(Command *));
-    if (!cmds) { if (num_cmds) *num_cmds = 0; return NULL; }
 
-    int cmd_index = 0, arg_index = 0, buff_index = 0;
-    char token_buff[1024];
-    bool in_single = false, in_double = false;
-    bool skip_next_arg = false, aborted = false;
-    const char *p = input;
-
-    // init first command
-    Command *current = calloc(1, sizeof(Command));
-    if (!current) { free(cmds); if (num_cmds) *num_cmds = 0; return NULL; }
-    current->argv = calloc(MAX_ARGS, sizeof(char *));
-    if (!current->argv) { free(current); free(cmds); if (num_cmds) *num_cmds = 0; return NULL; }
-
-    while (*p) {
-        char c = *p;
-
-        // escape sequence
-        if (c == '\\' && p[1]) {
-            if (buff_index < (int)sizeof(token_buff) - 1)
-                token_buff[buff_index++] = p[1];
-            p += 2;
-            continue;
-        }
-
-        // quote toggles
-        if (c == '\'' && !in_double) { in_single = !in_single; p++; continue; }
-        if (c == '"'  && !in_single) { in_double = !in_double; p++; continue; }
-
-        // pipe flush
-        if (c == '|' && !in_single && !in_double) {
-            if (buff_index > 0 && !skip_next_arg && arg_index < MAX_ARGS - 1) {
-                token_buff[buff_index] = '\0';
-                current->argv[arg_index++] = strdup(token_buff);
-            }
-            buff_index = 0;
-            skip_next_arg = false; // reset after push attempt
-
-            current->argv[arg_index] = NULL;
-            current->argc = arg_index;
-
-            if (cmd_index < MAX_CMDS) {
-                cmds[cmd_index++] = current;
-            } else {
-                LOG(LOG_LEVEL_ERR, "Too many commands in pipeline, discarding extra");
-                free_command(current);
-                aborted = true;
-                break;
-            }
-
-            current = calloc(1, sizeof(Command));
-            if (!current) { aborted = true; break; }
-            current->argv = calloc(MAX_ARGS, sizeof(char *));
-            if (!current->argv) { free(current); aborted = true; break; }
-            arg_index = 0;
-            p++;
-            continue;
-        }
-
-        // redirection
-        if ((c == '>' || c == '<') && !in_single && !in_double) {
-            char chevron = c;
-            bool is_append = (*(p + 1) == c);
-            int redir_fd = -1;
-
-            if (p > input && isdigit((unsigned char)*(p - 1)))
-                redir_fd = *(p - 1) - '0';
-
-            p += is_append ? 2 : 1;
-            while (*p && isspace((unsigned char)*p)) p++;
-
-            buff_index = 0;
-            while (*p && (!isspace((unsigned char)*p) || in_single || in_double)) {
-                if (*p == '\'' && !in_double) { in_single = !in_single; p++; }
-                else if (*p == '"' && !in_single) { in_double = !in_double; p++; }
-                else {
-                    if (buff_index < (int)sizeof(token_buff) - 1)
-                        token_buff[buff_index++] = *p;
-                    p++;
-                }
-            }
-            token_buff[buff_index] = '\0';
-            char *filename = strdup(token_buff);
-            buff_index = 0;
-
-            if (chevron == '>' && is_append) {
-                current->append_file = filename;
-                current->output_fd = (redir_fd != -1) ? redir_fd : 1;
-            } else if (chevron == '>') {
-                current->output_file = filename;
-                current->output_fd = (redir_fd != -1) ? redir_fd : 1;
-            } else {
-                current->input_file = filename;
-                current->input_fd = (redir_fd != -1) ? redir_fd : 0;
-            }
-
-            skip_next_arg = true; // block this token from argv
-            continue;
-        }
-
-        // whitespace flush
-        if (isspace((unsigned char)c) && !in_single && !in_double) {
-            if (buff_index > 0) {
-                if (!skip_next_arg && arg_index < MAX_ARGS - 1) {
-                    token_buff[buff_index] = '\0';
-                    current->argv[arg_index++] = strdup(token_buff);
-                }
-                buff_index = 0;
-                skip_next_arg = false; // only now clear it
-            }
-            p++;
-            continue;
-        }
-
-        // normal char
-        if (buff_index < (int)sizeof(token_buff) - 1)
-            token_buff[buff_index++] = c;
-        p++;
-    }
-
-    // final flush
-    if (!aborted) {
-        if (buff_index > 0 && !skip_next_arg && arg_index < MAX_ARGS - 1) {
-            token_buff[buff_index] = '\0';
-            current->argv[arg_index++] = strdup(token_buff);
-        }
-        // no push if skip_next_arg true
-        current->argv[arg_index] = NULL;
-        current->argc = arg_index;
-
-        if (cmd_index < MAX_CMDS) {
-            cmds[cmd_index++] = current;
-        } else {
-            LOG(LOG_LEVEL_ERR, "Final command exceeds MAX_CMDS, discarding");
-            free_command(current);
-        }
-    }
-
-    if (num_cmds) *num_cmds = cmd_index;
-    return cmds;
-} */
-
-Command **parse_pipeline(const char *input, int *num_cmds) {
+Command **parse_commands(const char *input, int *num_cmds) {
     Command **cmds = calloc(MAX_CMDS, sizeof(Command *));
     if (!cmds) {
         if (num_cmds) *num_cmds = 0;
@@ -572,7 +429,7 @@ Command **parse_pipeline(const char *input, int *num_cmds) {
             if (cmd_index < MAX_CMDS) {
                 cmds[cmd_index++] = current;
             } else {
-                LOG(LOG_LEVEL_ERR, "Too many commands in pipeline, discarding extra");
+                LOG(LOG_LEVEL_ERR, "Too many commands, discarding extra");
                 free_command(current);
                 aborted = true;
                 break;
@@ -1018,10 +875,10 @@ static void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pip
 
 
 
-/* ================= Refactored launch_pipeline ================= */
-// Ownership: cmds is BORROWED. launch_pipeline MUST NOT free or modify cmds or any Command/argv.
+/* ================= Refactored launch_commands ================= */
+// Ownership: cmds is BORROWED. launch_commands MUST NOT free or modify cmds or any Command/argv.
 // Caller (process_input_segments) frees via free_command_list(cmds, num_cmds) after return.
-int launch_pipeline(ShellContext *shell, Command **cmds, int num_cmds) {
+int launch_commands(ShellContext *shell, Command **cmds, int num_cmds) {
     int i, status = 0, last_exit = 0;
     pid_t pgid = 0;
     shell->pipeline_pgid = 0; // Reset pipeline PGID
@@ -1240,8 +1097,8 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
 
     for (int i = 0; segments[i]; ++i) {
         int num_cmds = 0;
-        Command **cmds = parse_pipeline(segments[i], &num_cmds);
-        LOG(LOG_LEVEL_INFO, "parse_pipeline returned %d commands", num_cmds);
+        Command **cmds = parse_commands(segments[i], &num_cmds);
+        LOG(LOG_LEVEL_INFO, "parse_commands returned %d commands", num_cmds);
 
         // Validate command list before doing anything
         bool valid = true;
@@ -1328,7 +1185,7 @@ void process_input_segments(ShellContext *shell, const char *expanded_input) {
         }
 
         LOG(LOG_LEVEL_INFO, "Executing segment: '%s'", segments[i]);
-        int status = launch_pipeline(shell, cmds, num_cmds);
+        int status = launch_commands(shell, cmds, num_cmds);
         shell->last_status = status;
         LOG(LOG_LEVEL_INFO, "Segment %d exited with status %d", i, status);
 

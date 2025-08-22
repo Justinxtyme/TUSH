@@ -13,9 +13,9 @@
 #define EXECUTOR_H
 
 //int run_command(char **args);
-Command **parse_pipeline(const char *input, int *num_cmds);
+Command **parse_commands(const char *input, int *num_cmds);
 
-int launch_pipeline(ShellContext *shell, Command **cmds, int num_cmds);
+int launch_commands(ShellContext *shell, Command **cmds, int num_cmds);
 
 int search_path_alloc(const char *cmd, char **outp);
 
