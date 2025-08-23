@@ -9,9 +9,14 @@
  
 
 typedef enum {
-    REDIR_IN, REDIR_OUT, REDIR_APPEND, REDIR_ERR,
-    REDIR_DUP_OUT, REDIR_DUP_ERR,
-    REDIR_HEREDOC, REDIR_CWD
+    REDIR_IN, // <
+    REDIR_OUT, // >
+    REDIR_APPEND, // <<
+    REDIR_ERR, // 2> 
+    REDIR_DUP_OUT, // N>&M
+    REDIR_DUP_ERR, 
+    REDIR_HEREDOC, // EOF
+    REDIR_CWD 
 } RedirType;
 
 typedef struct {
@@ -22,9 +27,11 @@ typedef struct {
     char *heredoc_data;  // For heredoc
 } Redirection;
 
+int extract_redirections(const Command *cmd, Redirection **out);
 
+//int perform_redirections(Command *cmd);
 
-int perform_redirections(Command *cmd);
+int perform_redirections(Redirection *list, int count);
 
 
 #endif

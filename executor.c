@@ -484,113 +484,7 @@ static pipe_pair_t *create_pipes(int num_cmds) {
 // Execute a single command with redirection and cwd override.
 // This is called in the child process after fork().
 static void exec_command(ShellContext *shell, Command *cmd) {
-    /* // Input redirection: `< file`
-    if (cmd->input_file) {
-        int fd = open(cmd->input_file, O_RDONLY);
-        if (fd < 0) {
-            perror("open input_file");
-            exit(1);
-        }
-        if (dup2(fd, STDIN_FILENO) < 0) {
-            perror("dup2 input_file");
-            close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-
-    // Output redirection: `>` or `>>`
-    if (cmd->output_file || cmd->append_file) {
-        const char *target = cmd->append_file ? cmd->append_file : cmd->output_file;
-        int flags = O_WRONLY | O_CREAT;
-        flags |= (cmd->append_file ? O_APPEND : O_TRUNC);
-        int fd = open(target, flags, 0644);
-        if (fd < 0) {
-            perror("open output_file");
-            exit(1);
-        }
-        if (dup2(fd, STDOUT_FILENO) < 0) {
-            perror("dup2 output_file");
-            close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-
-    // Error redirection: `2> file`
-    if (cmd->error_file) {
-        int fd = open(cmd->error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd < 0) {
-            perror("open error_file");
-            exit(1);
-        }
-        if (dup2(fd, STDERR_FILENO) < 0) {
-            perror("dup2 error_file");
-            close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-
-    // Combined redirection: `2>&1` or `&>`
-    if (cmd->output_to_error) {
-        if (dup2(STDOUT_FILENO, STDERR_FILENO) < 0) {
-            perror("dup2 2>&1");
-            exit(1);
-        }
-    }
-    if (cmd->error_to_output) {
-        if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
-            perror("dup2 &>");
-            exit(1);
-        }
-    }
-
-    // FD-based redirection (e.g., `3<foo`, `4>bar`, `2>&1`)
-    if (cmd->input_fd >= 0 && cmd->input_file) {
-        int fd = open(cmd->input_file, O_RDONLY);
-        if (fd < 0 || dup2(fd, cmd->input_fd) < 0) {
-            perror("dup2 input_fd");
-            if (fd >= 0) close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-    if (cmd->output_fd >= 0 && cmd->output_file) {
-        int fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd < 0 || dup2(fd, cmd->output_fd) < 0) {
-            perror("dup2 output_fd");
-            if (fd >= 0) close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-    if (cmd->error_fd >= 0 && cmd->error_file) {
-        int fd = open(cmd->error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd < 0 || dup2(fd, cmd->error_fd) < 0) {
-            perror("dup2 error_fd");
-            if (fd >= 0) close(fd);
-            exit(1);
-        }
-        close(fd);
-    }
-
-    // CWD override: for subshells or directory-specific exec
-    if (cmd->cwd_override && chdir(cmd->cwd_override) != 0) {
-        perror("chdir");
-        exit(1);
-    }
-
-    // Heredoc support (if implemented)
-    if (cmd->heredoc) {
-        // TODO: inject heredoc content into stdin via pipe or temp file
-    }
-
-    for (int i = 0; cmd->argv[i]; ++i) {
-        LOG(LOG_LEVEL_INFO, "exec_command: argv[%d] = \"%s\"", i, cmd->argv[i]);
-    }
-    LOG(LOG_LEVEL_INFO, "exec_command: input_file = \"%s\"", cmd->input_file ? cmd->input_file : "NULL");
-*/
+  
     char *resolved_path = NULL;
 
     if (has_slash(cmd->argv[0])) {
@@ -611,49 +505,28 @@ static void exec_command(ShellContext *shell, Command *cmd) {
         }
     }
     
-    //Redirect 
-    LOG(LOG_LEVEL_INFO, "Performing redirections");
-    if (perform_redirections(cmd) != 0) {
-        if (resolved_path != cmd->argv[0]) free((void *)resolved_path);
-        exit(1);
-    }
-
-    for (int i = 0; cmd->argv[i]; ++i) {
-        LOG(LOG_LEVEL_INFO, "child argv[%d] = \"%s\"", i, cmd->argv[i]);
-    }
-    LOG(LOG_LEVEL_INFO, "child about to exec, stdout now points to file");
+    Redirection *redirs = NULL;
+    int redir_count = extract_redirections(cmd, &redirs); // you write this helper
 
     
-    // Execute the command
-    //execvp(cmd->argv[0], cmd->argv);
-    //perror("execvp");
-    //exit(1);
+    LOG(LOG_LEVEL_INFO, "Performing redirections");
+    if (perform_redirections(redirs, redir_count) != 0) {
+        if (resolved_path != cmd->argv[0]) free((void *)resolved_path);
+        free(redirs);
+        exit(1); // early bail in child
+    }
 
     // 🚀 Execute
     execve(resolved_path, cmd->argv, environ);
+
+    // only reached if execve() fails
     print_exec_error(resolved_path, errno);
 
     if (resolved_path != cmd->argv[0]) free((void *)resolved_path);
-    exit(1);
-
+    free(redirs);
+    _exit(1);
 }
 
-
-
-/*static void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) { 
-    // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
-    if (tcsetpgrp(shell->tty_fd, pgid) < 0) { 
-        // Don’t spam; log if you have a debug flag
-        LOG(LOG_LEVEL_INFO, "tcsetpgrp(give): %s\n", strerror(errno));
-
-    }
-}
-
-static void reclaim_terminal(ShellContext *shell) {
-    if (tcsetpgrp(shell->tty_fd, shell->shell_pgid) < 0) {
-        // perror("tcsetpgrp(reclaim)");
-    }
-} */
 
 /* Close all pipe FDs in parent */
 static void close_pipes(pipe_pair_t *pipes, int num_cmds) {
