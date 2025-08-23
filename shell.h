@@ -26,5 +26,7 @@ typedef struct {
 void add_to_history(ShellContext *ctx, const char *input); // Add command to history
 
 void setup_shell_job_control(ShellContext *shell);
+
+
 #endif
 

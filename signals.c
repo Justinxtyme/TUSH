@@ -6,6 +6,9 @@
 #include <sys/wait.h>   // waitpid(), WIFEXITED, etc.
 #include <string.h>     // strcmp()
 #include <stdio.h>      // perror()
+#include <errno.h>
+#include "debug.h"
+#include "shell.h"
 
 
 
@@ -34,4 +37,19 @@ void setup_child_signals(void) {
     sigaction(SIGTTIN, &sa, NULL); //terminal input sig
     sigaction(SIGTTOU, &sa, NULL); //terminal output sig
     sigaction(SIGCHLD, &sa, NULL);
+}
+
+void give_terminal_to_pgid(ShellContext *shell, pid_t pgid) { 
+    // With SIGTTOU ignored, tcsetpgrp won’t stop us if we happen to be bg.
+    if (tcsetpgrp(shell->tty_fd, pgid) < 0) { 
+        // Don’t spam; log if you have a debug flag
+        LOG(LOG_LEVEL_INFO, "tcsetpgrp(give): %s\n", strerror(errno));
+
+    }
+}
+
+void reclaim_terminal(ShellContext *shell) {
+    if (tcsetpgrp(shell->tty_fd, shell->shell_pgid) < 0) {
+        // perror("tcsetpgrp(reclaim)");
+    }
 }

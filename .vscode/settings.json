@@ -71,7 +71,12 @@
     "stdint.h": "c",
     "compare": "c",
     "jobs.h": "c",
-    "redirect.h": "c"
+    "redirect.h": "c",
+    "limits.h": "c",
+    "stat.h": "c",
+    "signal.h": "c",
+    "termios.h": "c",
+    "signals.h": "c"
   },
   "makefile.configureOnOpen": true,
   "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"

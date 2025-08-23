@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include "redirect.h"
 #include "debug.h"
+#include "command.h"
 #include <errno.h>
 
 //-----------------------------------------------------------------------------
@@ -34,120 +35,133 @@
 // Perform all redirections in cmd, strip tokens from argv as we go.
 // Returns 0 on success, -1 on failure (errno set by open()).
 //-----------------------------------------------------------------------------
+
 int perform_redirections(Command *cmd) {
     if (!cmd) return 0;
 
-    LOG(LOG_LEVEL_INFO, "redir: begin for argv[0]=%s", 
+    LOG(LOG_LEVEL_INFO, "redir: begin for argv[0]=%s",
         (cmd->argv && cmd->argv[0]) ? cmd->argv[0] : "(null)");
 
-    // stdin: < file  (default fd 0 or cmd->input_fd)
-    if (cmd->input_file) {
-        int in_fd_spec = (cmd->input_fd > -1) ? cmd->input_fd : 0;
-        LOG(LOG_LEVEL_INFO, "redir: open '%s' for stdin (fd=%d)",
-            cmd->input_file, in_fd_spec);
+    // CWD override
+    if (cmd->cwd_override) {
+        if (chdir(cmd->cwd_override) != 0) {
+            LOG(LOG_LEVEL_ERR, "redir: chdir('%s') failed: %s", cmd->cwd_override, strerror(errno));
+            return -1;
+        }
+        LOG(LOG_LEVEL_INFO, "redir: cwd overridden to '%s'", cmd->cwd_override);
+    }
+
+    // Heredoc overrides input_file
+    if (cmd->heredoc && cmd->input_file) {
+        LOG(LOG_LEVEL_WARN, "redir: both heredoc and input_file set—heredoc will override stdin");
+    }
+
+    // Input redirection: heredoc or input_file
+    if (cmd->heredoc) {
+        int pipefd[2];
+        if (pipe(pipefd) < 0) {
+            LOG(LOG_LEVEL_ERR, "pipe failed for heredoc: %s", strerror(errno));
+            return -1;
+        }
+
+        ssize_t written = write(pipefd[1], cmd->heredoc, strlen(cmd->heredoc));
+        if (written < 0) {
+            LOG(LOG_LEVEL_ERR, "write failed for heredoc: %s", strerror(errno));
+            close(pipefd[0]);
+            close(pipefd[1]);
+            return -1;
+        }
+
+        close(pipefd[1]);
+
+        if (dup2(pipefd[0], STDIN_FILENO) < 0) {
+            LOG(LOG_LEVEL_ERR, "dup2 failed for heredoc pipe: %s", strerror(errno));
+            close(pipefd[0]);
+            return -1;
+        }
+
+        close(pipefd[0]);
+        LOG(LOG_LEVEL_INFO, "heredoc injected into stdin");
+    } else if (cmd->input_file) {
+        int target_fd = (cmd->input_fd >= 0) ? cmd->input_fd : STDIN_FILENO;
+        LOG(LOG_LEVEL_INFO, "redir: open '%s' for input (fd=%d)", cmd->input_file, target_fd);
 
         int fd = open(cmd->input_file, O_RDONLY);
         if (fd < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s",
-                cmd->input_file, strerror(errno));
+            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s", cmd->input_file, strerror(errno));
             return -1;
         }
-        if (dup2(fd, in_fd_spec) < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s",
-                fd, in_fd_spec, strerror(errno));
+        if (dup2(fd, target_fd) < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s", fd, target_fd, strerror(errno));
             close(fd);
             return -1;
         }
         close(fd);
-        LOG(LOG_LEVEL_INFO, "redir: stdin now from '%s'", cmd->input_file);
+        LOG(LOG_LEVEL_INFO, "redir: input now from '%s'", cmd->input_file);
     }
 
-    // stdout: > file (truncate) OR >> file (append)
-    // Prefer append_file if set; otherwise output_file.
-    if (cmd->append_file) {
-        int out_fd_spec = (cmd->output_fd > -1) ? cmd->output_fd : 1;
-        LOG(LOG_LEVEL_INFO, "redir: open '%s' for append (fd=%d)",
-            cmd->append_file, out_fd_spec);
+    // Output redirection: append or truncate
+    const char *out_target = cmd->append_file ? cmd->append_file : cmd->output_file;
+    if (out_target) {
+        int target_fd = (cmd->output_fd >= 0) ? cmd->output_fd : STDOUT_FILENO;
+        int flags = O_WRONLY | O_CREAT | (cmd->append_file ? O_APPEND : O_TRUNC);
+        LOG(LOG_LEVEL_INFO, "redir: open '%s' for output (fd=%d)", out_target, target_fd);
 
-        int fd = open(cmd->append_file, O_WRONLY | O_CREAT | O_APPEND, 0666);
+        int fd = open(out_target, flags, 0666);
         if (fd < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s",
-                cmd->append_file, strerror(errno));
+            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s", out_target, strerror(errno));
             return -1;
         }
-        if (dup2(fd, out_fd_spec) < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s",
-                fd, out_fd_spec, strerror(errno));
+        if (dup2(fd, target_fd) < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s", fd, target_fd, strerror(errno));
             close(fd);
             return -1;
         }
         close(fd);
-        LOG(LOG_LEVEL_INFO, "redir: stdout now appending to '%s'", cmd->append_file);
-    } else if (cmd->output_file) {
-        int out_fd_spec = (cmd->output_fd > -1) ? cmd->output_fd : 1;
-        LOG(LOG_LEVEL_INFO, "redir: open '%s' for truncate (fd=%d)",
-            cmd->output_file, out_fd_spec);
-
-        int fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        if (fd < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s",
-                cmd->output_file, strerror(errno));
-            return -1;
-        }
-        if (dup2(fd, out_fd_spec) < 0) {
-            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s",
-                fd, out_fd_spec, strerror(errno));
-            close(fd);
-            return -1;
-        }
-        close(fd);
-        LOG(LOG_LEVEL_INFO, "redir: stdout now truncating to '%s'", cmd->output_file);
+        LOG(LOG_LEVEL_INFO, "redir: output now to '%s'", out_target);
     }
 
-    // Optional: stderr redirection if you support 2> or fd-spec.
-    // if (cmd->error_file) { ... dup2(..., 2) with LOG(...) }
+    // Error redirection
+    if (cmd->error_file) {
+        int target_fd = (cmd->error_fd >= 0) ? cmd->error_fd : STDERR_FILENO;
+        LOG(LOG_LEVEL_INFO, "redir: open '%s' for error output (fd=%d)", cmd->error_file, target_fd);
 
-    // Optional: heredoc already prepped into a pipe by parser/executor
-    // If you carry cmd->heredoc as raw content, handle creation here.
+        int fd = open(cmd->error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: open('%s') failed: %s", cmd->error_file, strerror(errno));
+            return -1;
+        }
+        if (dup2(fd, target_fd) < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: dup2(%d->%d) failed: %s", fd, target_fd, strerror(errno));
+            close(fd);
+            return -1;
+        }
+        close(fd);
+        LOG(LOG_LEVEL_INFO, "redir: error output now to '%s'", cmd->error_file);
+    }
 
+    // Combined redirection
+    if (cmd->output_to_error) {
+        if (dup2(STDOUT_FILENO, STDERR_FILENO) < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: dup2(stdout->stderr) failed: %s", strerror(errno));
+            return -1;
+        }
+        LOG(LOG_LEVEL_INFO, "redir: stderr now mirrors stdout");
+    }
+    if (cmd->error_to_output) {
+        if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
+            LOG(LOG_LEVEL_ERR, "redir: dup2(stderr->stdout) failed: %s", strerror(errno));
+            return -1;
+        }
+        LOG(LOG_LEVEL_INFO, "redir: stdout now mirrors stderr");
+    }
     LOG(LOG_LEVEL_INFO, "redir: done");
     return 0;
 }
 
 
-//-----------------------------------------------------------------------------
-// Existing free routines, unchanged
-//-----------------------------------------------------------------------------
-void free_command_list(Command **cmds, int num_cmds) {
-    if (!cmds) return;
-    for (int i = 0; i < num_cmds; ++i) {
-        Command *cmd = cmds[i];
-        if (cmd && cmd->argv && cmd->argv[0]) {
-            LOG(LOG_LEVEL_INFO, "Freeing command[%d]: '%s'", i, cmd->argv[0]);
-        } else {
-            LOG(LOG_LEVEL_INFO, "Freeing command[%d]: <invalid>", i);
-        }
-        if (cmd) {
-            free_command(cmd);
-        }
-    }
-    free(cmds);
-}
 
-void free_command(Command *cmd) {
-    if (!cmd) return;
-    if (cmd->argv) {
-        for (int i = 0; i < cmd->argc; ++i) {
-            free(cmd->argv[i]);
-        }
-        free(cmd->argv);
-    }
-    free(cmd->input_file);
-    free(cmd->output_file);
-    free(cmd->append_file);
-    free(cmd->error_file);
-    free(cmd->heredoc);
-    free(cmd->cwd_override);
-    free(cmd->raw_input);
-    free(cmd);
-}
+
+
+
+

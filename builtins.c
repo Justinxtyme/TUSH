@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include "redirect.h"
+#include "command.h"
+#include "debug.h"
+#include "path.h"
 
 #define SHELL_EXIT 42 
 
@@ -13,10 +15,16 @@ int handle_cd(Command *cmd) {
 
     // Use second argument as path, or fallback to $HOME
     const char *path = cmd->argv[1] ? cmd->argv[1] : getenv("HOME");
-    if (!path) {
-        fprintf(stderr, "thrash: cd: no path and $HOME not set\n");
+    //if (!path) {
+    //    fprintf(stderr, "thrash: cd: no path and $HOME not set\n");
+    //    return -1;
+    //}
+    if (!is_directory(path)) {
+        fprintf(stderr, "thrash: cd: '%s' is not a directory\n", path);
         return -1;
     }
+    
+    LOG(LOG_LEVEL_INFO, "cd: changing directory to '%s'", path);
 
     if (chdir(path) != 0) {
         perror("cd");
@@ -33,5 +41,5 @@ int handle_exit() {
 
 // add builtins as needed
 bool is_builtin(const char *cmd) {
-    return strcmp(cmd, "cd") == 0 || strcmp(cmd, "exit") == 0 || strcmp(cmd, "export") == 0;;
+    return strcmp(cmd, "cd") == 0 || strcmp(cmd, "exit") == 0 || strcmp(cmd, "export") == 0;
 }

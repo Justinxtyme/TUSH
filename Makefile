@@ -7,11 +7,11 @@ CC = gcc
 # -g     → include debug info for gdb
 # -MMD   → generate a .d file listing header dependencies
 # -MP    → add "dummy" rules so make won't break if a header is deleted
-CFLAGS = -Wall -Wextra -g -MMD -MP  #-DDEBUG -Werror
+CFLAGS = -Wall -Wextra -g -MMD -MP  -DDEBUG  #-Werror
 
 
 # List of source files
-SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c history.c var.c redirect.c
+SRC = main.c executor.c builtins.c shell.c input.c signals.c jobs.c history.c var.c redirect.c parser.c path.c command.c
 #include readline library for input handling
 # This library provides functions for reading input with line editing capabilities
 LDFLAGS = -lreadline

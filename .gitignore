@@ -38,3 +38,11 @@ mid.txt
 out.txt
 .gitignore
 thrash_test_tmp/README.md
+output.txt
+path.o
+parser.o
+.gitignore
+path.d
+parser.d
+.vscode/settings.json
+.vscode/settings.json
