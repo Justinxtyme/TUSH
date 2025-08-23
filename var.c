@@ -404,18 +404,155 @@ bool is_var_assignment(const char *s) {
     return true;
 }
 
-/* VAR TABLE INITIATION IN MAIN SHELL INIT
 
-void init_var_table(ShellContext *shell) {
-    shell->vars = malloc(sizeof(VarTable));
-        if (!shell->vars) {
-            fprintf(stderr, "Failed to allocate VarTable\n");
-            exit(1);
+/* Growable buffer helpers */
+static int ensure_cap(char **buf, size_t *cap, size_t min_needed, char **cursor) {
+    size_t used = (size_t)(*cursor - *buf); 
+    if (min_needed <= *cap) return 1;
+    size_t new_cap = *cap ? *cap : 64;
+    while (new_cap < min_needed) {
+        if (new_cap > SIZE_MAX / 2) new_cap = SIZE_MAX;
+        else new_cap *= 2;
+        if (new_cap < min_needed) return 0;
+    }
+    char *nbuf = realloc(*buf, new_cap);
+    if (!nbuf) return 0;
+    *buf = nbuf;
+    *cap = new_cap;
+    *cursor = nbuf + used;
+    return 1;
+}
+
+static int append_mem(char **buf, size_t *cap, char **cursor, const void *src, size_t n) {
+    size_t used = (size_t)(*cursor - *buf);
+    if (!ensure_cap(buf, cap, used + n + 1, cursor)) return 0;
+    if (n) memcpy(*cursor, src, n);
+    *cursor += n;
+    **cursor = '\0';
+    return 1;
+}
+
+static inline int append_ch(char **buf, size_t *cap, char **cursor, char c) {
+    return append_mem(buf, cap, cursor, &c, 1);
+}
+/* ... keep your ensure_cap/append_mem/append_ch helpers above ... */
+/* Expand variables:
+ *  - $?      -> last_exit
+ *  - $NAME   -> lookup via vart_get()
+ *  - ${NAME} -> lookup; if missing `}` emit literal "${" + rest
+ *  - \$      -> literal $
+ *
+ * Returns malloc'd string (caller frees) or NULL on OOM/error.
+ */
+char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars) {
+    if (!input) return NULL;
+
+    char exit_str[16];
+    int exit_len = snprintf(exit_str, sizeof(exit_str), "%d", last_exit);
+    if (exit_len < 0) return NULL;
+    if (exit_len >= (int)sizeof(exit_str)) {
+        /* s truncated — treat as error to avoid partial data */
+        return NULL;
+    }
+    LOG(LOG_LEVEL_INFO, "string=%s", exit_str);
+    char *out = NULL;
+    size_t cap = 0;
+    char *dst = NULL;
+
+    if (!ensure_cap(&out, &cap, 64, &dst)) return NULL;
+    *dst = '\0';
+    const char *src = input;
+    while (*src) {
+        /* Escaped dollar: \$  -> emit literal '$' (drop backslash) */
+        if (src[0] == '\\' && src[1] == '$') {
+            if (!append_ch(&out, &cap, &dst, '$')) goto oom;
+            src += 2;
+            continue;
         }
 
-        if (!vart_init(shell->vars, 64)) { // initialize var tables 
-        LOG(LOG_LEVEL_ERR, "Failed to initialize VarTable");
-        exit(EXIT_FAILURE);
+        if (*src != '$') {
+            if (!append_ch(&out, &cap, &dst, *src++)) goto oom;
+            continue;
         }
-    return;
-    }  */
+
+        /* We have a '$' */
+        src++; /* consume '$' */
+
+        /* Case: $? */
+        if (*src == '?') {
+            if (!append_mem(&out, &cap, &dst, exit_str, (size_t)exit_len)) goto oom;
+            src++;
+            continue;
+        }
+
+        /* Case: ${NAME} */
+        if (*src == '{') {
+            const char *name_start = ++src; /* skip '{' */
+            const char *scan = name_start;
+            while (*scan && *scan != '}') scan++;
+            if (*scan != '}') {
+                /* No closing brace: emit literal "${" and reprocess rest literally */
+                if (!append_mem(&out, &cap, &dst, "${", 2)) goto oom;
+                src = name_start; /* reprocess rest literally */
+                continue;
+            }
+            size_t name_len = (size_t)(scan - name_start);
+            if (name_len == 0) {
+                /* Empty name -> literal ${} */
+                if (!append_mem(&out, &cap, &dst, "${}", 3)) goto oom;
+                src = scan + 1;
+                continue;
+            }
+
+            char name[256];
+            if (name_len >= sizeof(name)) name_len = sizeof(name) - 1;
+            memcpy(name, name_start, name_len);
+            name[name_len] = '\0';
+
+            const char *val = "";
+            if (vars) {
+                Var *v = vart_get(vars, name);
+                if (v && v->value) val = v->value;
+            }
+            if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
+            src = scan + 1; /* skip '}' */
+            continue;
+        }
+
+        /* Case: $NAME where NAME = [A-Za-z_][A-Za-z0-9_]* */
+        unsigned char c = (unsigned char)*src;
+        if (isalpha(c) || c == '_') {
+            const char *name_start = src;
+            src++;
+            while (*src) {
+                unsigned char d = (unsigned char)*src;
+                if (isalnum(d) || d == '_') src++;
+                else break;
+            }
+            size_t name_len = (size_t)(src - name_start);
+            char name[256];
+            if (name_len >= sizeof(name)) name_len = sizeof(name) - 1;
+            memcpy(name, name_start, name_len);
+            name[name_len] = '\0';
+
+            const char *val = "";
+            if (vars) {
+                Var *v = vart_get(vars, name);
+                if (v && v->value) val = v->value;
+            }
+            if (!append_mem(&out, &cap, &dst, val, strlen(val))) goto oom;
+            continue;
+        }
+        LOG(LOG_LEVEL_INFO, "unsupported: %c", c);
+        /* Unsupported/positional/ lone '$' -> emit literal '$' and reprocess next char */
+        if (!append_ch(&out, &cap, &dst, '$')) goto oom;
+        /* do not advance src here; next loop will handle current char */
+    }
+    *dst = '\0';
+    LOG(LOG_LEVEL_INFO, "returning %s", out);
+    return out;
+
+oom:
+    free(out);
+    return NULL;
+}

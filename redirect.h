@@ -1,12 +1,11 @@
 //redirect.h
+ #ifndef REDIRECT_H
+#define REDIRECT_H
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <stdlib.h>
-#include "command.h"
- #ifndef REDIRECT_H
-#define REDIRECT_H
- 
+#include "command.h" 
 
 typedef enum {
     REDIR_IN, // <

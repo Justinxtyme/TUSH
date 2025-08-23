@@ -49,3 +49,6 @@ parser.d
 command.o
 command.d
 
+ansi_color.h
+pipeline.o
+pipeline.d

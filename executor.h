@@ -24,4 +24,6 @@ void free_segments(char **segments);
 
 void process_input_segments(ShellContext *shell, const char *expanded_input);
 
+void exec_command(ShellContext *shell, Command *cmd);
+
 #endif  // EXECUTOR_H
