@@ -1,10 +1,10 @@
 // var.h
+#ifndef VAR_H
+#define VAR_H
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-
-#ifndef VAR_H
-#define VAR_H
 //#include "shell.h"
 
 

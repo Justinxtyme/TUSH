@@ -1,13 +1,11 @@
-/*shell.h is the header file for the THRASH shell
- It defines the ShellContext structure and function prototypes for shell operations
- It includes necessary libraries and defines constants for input size and history management
- It is used to manage the shell's state, user input, and command history */
+
+#ifndef SHELL_H
+#define SHELL_H
 
 #include <sys/types.h>
 #include "history.h"
-#include "var.h" // Include variable table definitions
- #ifndef SHELL_H
-#define SHELL_H
+#include "var.h" // Include variable table definitions 
+
 #define INPUT_SIZE 1024
 
 typedef struct {

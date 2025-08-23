@@ -1,3 +1,6 @@
+#ifndef EXECUTOR_H
+#define EXECUTOR_H
+
 #include <stdbool.h>   // for bool
 #include <stddef.h>    // for size_t (if used in future)
 #include <unistd.h>    // for execvp, fork, pipe, dup2
@@ -9,8 +12,6 @@
 #include <stdio.h>
 #include "shell.h"
 #include "redirect.h"
-#ifndef EXECUTOR_H
-#define EXECUTOR_H
 
 //int run_command(char **args);
 //Command **parse_commands(const char *input, int *num_cmds);

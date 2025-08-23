@@ -1,4 +1,6 @@
-#pragma once
+#ifndef HISTORY_H
+#define HISTORY_H
+//#pragma once
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -59,4 +61,6 @@ int  history_default_path(char *out, size_t out_sz); // resolves $XDG_STATE_HOME
 
 #ifdef __cplusplus
 }
-#endif
+#endif // __cplusplus
+
+#endif //HISTORY_H
