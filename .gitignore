@@ -46,3 +46,5 @@ path.d
 parser.d
 .vscode/settings.json
 .vscode/settings.json
+command.c
+command.o
