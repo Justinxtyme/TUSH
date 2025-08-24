@@ -112,34 +112,6 @@ void exec_command(ShellContext *shell, Command *cmd) {
 }
 
 
-static int handle_builtin_in_pipeline(ShellContext *shell, Command *cmd, int num_cmds) {
-    if (!cmd || !cmd->argv || !cmd->argv[0]) return 0;
-
-    const char *name = cmd->argv[0];
-
-    if (strcmp(name, "cd") == 0) {
-        handle_cd(cmd); // now accepts full Command*
-        reclaim_terminal(shell);
-        shell->pipeline_pgid = 0;
-        return 1; // handled, skip fork
-    }
-
-    if (strcmp(name, "exit") == 0) {
-        if (num_cmds == 1) {
-            shell->running = 0;
-            return 2; // signal shell to exit
-        } else {
-            fprintf(stderr,
-                    "thrash: builtin 'exit' cannot be used in a pipeline\n");
-            return 1; // handled, skip fork
-        }
-    }
-
-    return 0; // not a builtin
-}
-
-
-
 /* ================= Refactored launch_commands ================= */
 // Ownership: cmds is BORROWED. launch_commands MUST NOT free or modify cmds or any Command/argv.
 // Caller (process_input_segments) frees via free_command_list(cmds, num_cmds) after return.

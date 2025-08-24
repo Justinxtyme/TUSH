@@ -18,9 +18,6 @@
 
 int launch_commands(ShellContext *shell, Command **cmds, int num_cmds);
 
-char *expand_variables_ex(const char *input, int last_exit, const VarTable *vars);
-
-
 void free_segments(char **segments);
 
 void process_input_segments(ShellContext *shell, const char *expanded_input);

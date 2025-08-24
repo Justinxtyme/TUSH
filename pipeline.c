@@ -11,6 +11,7 @@
 #include "command.h"
 #include "executor.h"
 #include "signals.h"
+#include "builtins.h"
 
 
 // A pipe consists of two fds: [0]=read end, [1]=write end.
@@ -153,4 +154,30 @@ void try_setpgid(pid_t pid, pid_t pgid) {
     // Optional: log persistent failure
     fprintf(stderr, "try_setpgid: failed to setpgid(%d, %d): %s\n",
             pid, pgid, strerror(errno));
+}
+
+int handle_builtin_in_pipeline(ShellContext *shell, Command *cmd, int num_cmds) {
+    if (!cmd || !cmd->argv || !cmd->argv[0]) return 0;
+
+    const char *name = cmd->argv[0];
+
+    if (strcmp(name, "cd") == 0) {
+        handle_cd(cmd); // now accepts full Command*
+        reclaim_terminal(shell);
+        shell->pipeline_pgid = 0;
+        return 1; // handled, skip fork
+    }
+
+    if (strcmp(name, "exit") == 0) {
+        if (num_cmds == 1) {
+            shell->running = 0;
+            return 2; // signal shell to exit
+        } else {
+            fprintf(stderr,
+                    "thrash: builtin 'exit' cannot be used in a pipeline\n");
+            return 1; // handled, skip fork
+        }
+    }
+
+    return 0; // not a builtin
 }

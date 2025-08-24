@@ -12,5 +12,6 @@ void close_pipes(pipe_pair_t *pipes, int num_cmds);
 void destroy_pipes(pipe_pair_t *pipes, int num_cmds);
 void setup_pipeline_child(ShellContext *shell, int idx, int num_cmds, pipe_pair_t *pipes, Command *cmd, pid_t leader_pgid);
 void try_setpgid(pid_t pid, pid_t pgid);
+int handle_builtin_in_pipeline(ShellContext *shell, Command *cmd, int num_cmds);
 
 #endif
