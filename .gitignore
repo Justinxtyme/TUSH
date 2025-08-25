@@ -52,3 +52,11 @@ command.d
 ansi_color.h
 pipeline.o
 pipeline.d
+append.txt
+.gitignore
+err.txt
+outty.txt
+both.txt
+&2
+input.txt
+input.txt
